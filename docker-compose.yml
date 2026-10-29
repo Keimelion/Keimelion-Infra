@@ -32,25 +32,25 @@ services:
     volumes:
       - ./data/uploads:/app/uploads
     ports:
-      - "0.0.0.0:${API_PORT}:3000"
+      - "127.0.0.1:${API_PORT}:3000"
 
   back:
     build:
       context: ../Keimelion-Backoffice
-      # Le back-office importe ../Keimelion-API/src via l'alias tsconfig @keimelion/api/*
+      # The back-office imports ../Keimelion-API/src through the tsconfig alias @keimelion/api/*
       additional_contexts:
         api-src: ../Keimelion-API/src
       args:
-        # Inlinée dans le bundle navigateur au build : doit être joignable depuis le navigateur
+        # Inlined into the browser bundle at build time: must be reachable from the browser
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      # Pour d'éventuels appels côté serveur Next (réseau Docker interne)
+      # For server-side Next calls, if any (internal Docker network)
       API_URL: http://api:3000
     ports:
-      - "0.0.0.0:${BACK_PORT}:3001"
+      - "127.0.0.1:${BACK_PORT}:3001"
 
   landing:
     build:
@@ -59,4 +59,24 @@ services:
         PUBLIC_API_BASE_URL: ${PUBLIC_API_URL}
     restart: unless-stopped
     ports:
-      - "0.0.0.0:${LANDING_PORT}:3002"
+      - "127.0.0.1:${LANDING_PORT}:3002"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - back
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Read-only: only the API writes uploads
+      - ./data/uploads:/srv/uploads:ro
+      # Certs + ACME state, unused until HTTPS is enabled
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

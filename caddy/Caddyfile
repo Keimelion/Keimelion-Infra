@@ -1,0 +1,30 @@
+{
+	# No ACME while we serve plain HTTP on the LAN
+	auto_https off
+}
+
+:80 {
+	# Uploaded images served directly (the API does not serve /uploads/* in
+	# production, see KEI-124). Cross-origin CORP so the back-office can display them.
+	handle_path /uploads/* {
+		root * /srv/uploads
+		header Cross-Origin-Resource-Policy "cross-origin"
+		header Cache-Control "public, max-age=3600"
+		file_server
+	}
+
+	# API: everything under /v1/* goes to api:3000
+	handle /v1/* {
+		reverse_proxy api:3000
+	}
+
+	# Direct API healthcheck (handy for smoke tests)
+	handle /health {
+		reverse_proxy api:3000
+	}
+
+	# Everything else goes to the back-office
+	handle {
+		reverse_proxy back:3001
+	}
+}
