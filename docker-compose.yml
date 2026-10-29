@@ -67,6 +67,7 @@ services:
     depends_on:
       - api
       - back
+      - landing
     ports:
       - "80:80"
     volumes:

@@ -3,28 +3,30 @@
 	auto_https off
 }
 
-:80 {
-	# Uploaded images served directly (the API does not serve /uploads/* in
-	# production, see KEI-124). Cross-origin CORP so the back-office can display them.
+# Landing — main entry point
+http://keimelion.local {
+	reverse_proxy landing:3002
+}
+
+# Back-office
+http://admin.keimelion.local {
+	reverse_proxy back:3001
+}
+
+# API + uploads (the API does not serve /uploads/* in production, see KEI-124).
+# Cross-origin CORP so the back-office (another origin) can display the images.
+http://api.keimelion.local {
 	handle_path /uploads/* {
 		root * /srv/uploads
 		header Cross-Origin-Resource-Policy "cross-origin"
 		header Cache-Control "public, max-age=3600"
 		file_server
 	}
+	reverse_proxy api:3000
+}
 
-	# API: everything under /v1/* goes to api:3000
-	handle /v1/* {
-		reverse_proxy api:3000
-	}
-
-	# Direct API healthcheck (handy for smoke tests)
-	handle /health {
-		reverse_proxy api:3000
-	}
-
-	# Everything else goes to the back-office
-	handle {
-		reverse_proxy back:3001
-	}
+# Direct IP fallback, for a machine without the /etc/hosts entries:
+# redirect to the landing
+http://192.168.1.102 {
+	redir http://keimelion.local{uri} permanent
 }

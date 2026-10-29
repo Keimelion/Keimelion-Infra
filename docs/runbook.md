@@ -46,10 +46,23 @@ The redirect to `/en/` based on the browser language (defined in `vercel.json`) 
 
 - Docker publishes ports through its own iptables rules (NAT + `FORWARD` chain, filterable only in `DOCKER-USER`), not through `INPUT`: **UFW rules do not apply to published ports**.
 - Debug ports (api 3000, back 3001, landing 3002, postgres 5432) are deliberately bound to `127.0.0.1`: reach them through an SSH tunnel from a dev workstation.
-- The landing is reachable with `ssh -L 8080:localhost:3002 milky-way -N`, then http://localhost:8080 on the workstation. It will move behind Caddy with hostname-based routing (future ticket).
-- Caddy on `:80` is the only LAN entry point (`ufw allow 80/tcp` is there for an honest `ufw status`, not for protection).
+- Caddy on `:80` is the only LAN entry point, with hostname-based routing (see "Access from a LAN client"). Note: UFW is currently **inactive** (a `80/tcp` rule exists but is not enforced).
 - Protection from the internet currently relies only on the router NAT (no port forwarding). The exposure ticket must address it (`ufw-docker` or binding to the LAN IP).
+
+## Access from a LAN client
+
+Add this line to `/etc/hosts` on each client machine:
+
+```
+192.168.1.102   keimelion.local admin.keimelion.local api.keimelion.local
+```
+
+- Landing: http://keimelion.local
+- Back-office: http://admin.keimelion.local
+- API: http://api.keimelion.local (uploads under `/uploads/*`)
+
+Hitting http://192.168.1.102 directly redirects (301) to http://keimelion.local. For production, switch `.local` to `.app` in the Caddyfile and `.env` (and rebuild `back`).
 
 ## Accessing the DB from a dev workstation
 
-Postgres only listens on the server's `127.0.0.1:5432`: open an SSH tunnel (`ssh -L 5433:localhost:5432 milky-way -N`), then connect to `postgres://keimelion:<POSTGRES_PASSWORD>@localhost:5433/keimelion`. The tunnel is authenticated by your SSH key: no need to open 5432 on the firewall.
+The DB is not routed through Caddy. Postgres only listens on the server's `127.0.0.1:5432`: open an SSH tunnel (`ssh -L 5433:localhost:5432 milky-way -N`), then connect to `postgres://keimelion:<POSTGRES_PASSWORD>@localhost:5433/keimelion`. The tunnel is authenticated by your SSH key: no need to open 5432 on the firewall.

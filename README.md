@@ -81,8 +81,9 @@ docker compose up -d --build
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
 | caddy     | 0.0.0.0:80             | caddy:2-alpine            |
 
-Caddy is the LAN entry point (plain HTTP, no ACME yet): `/v1/*` and `/health` go to
-the API, `/uploads/*` is served from `data/uploads`, everything else goes to the back-office.
+Caddy is the LAN entry point (plain HTTP, no ACME yet), routing by hostname:
+`keimelion.local` → landing, `admin.keimelion.local` → back-office,
+`api.keimelion.local` → API (+ `/uploads/*` served from `data/uploads`).
 The other ports are debug-only, bound to loopback (see the runbook, "Networking & firewall").
 
 All services use `restart: unless-stopped` and Docker is enabled at boot
