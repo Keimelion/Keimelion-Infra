@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.*.local
+data/
+volumes/
+*.key
+*.pem
+*.pfx
+secrets/
+*.log
+.DS_Store

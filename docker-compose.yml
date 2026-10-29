@@ -1,0 +1,62 @@
+name: keimelion
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ../Keimelion-API
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PORT: 3000
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - ./data/uploads:/app/uploads
+    ports:
+      - "0.0.0.0:${API_PORT}:3000"
+
+  back:
+    build:
+      context: ../Keimelion-Backoffice
+      # Le back-office importe ../Keimelion-API/src via l'alias tsconfig @keimelion/api/*
+      additional_contexts:
+        api-src: ../Keimelion-API/src
+      args:
+        # Inlinée dans le bundle navigateur au build : doit être joignable depuis le navigateur
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Pour d'éventuels appels côté serveur Next (réseau Docker interne)
+      API_URL: http://api:3000
+    ports:
+      - "0.0.0.0:${BACK_PORT}:3001"
+
+  landing:
+    build:
+      context: ../Keimelion-Landing
+      args:
+        PUBLIC_API_BASE_URL: ${PUBLIC_API_URL}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${LANDING_PORT}:3002"
