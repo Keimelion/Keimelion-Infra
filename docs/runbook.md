@@ -1,33 +1,55 @@
-# Runbook — serveur Keimelion
+# Runbook — Keimelion server
 
-## Démarrer / arrêter la stack
+## Setup from scratch
 
-## Consulter les logs
+Follow the README "Initial setup". Run `scripts/setup-data-dirs.sh` (with `sudo` if `data/` already exists and is owned by root) before the first `docker compose up`.
 
-## Déployer une nouvelle version
+## Start / stop the stack
 
-## Migrations de base de données
+## Check the logs
 
-## Seed de la base
+## Deploy a new version
 
-## Backup Postgres
+## Database migrations
 
-## Restauration Postgres
+## Seeding the database
 
-## Rotation des secrets
+Dev/test data only, never in production. The API image does not ship `src/db/seed`, so run the compiled seed in a one-off container with the fixtures mounted read-only (seeders are idempotent):
 
-## Reboot et vérifications post-reboot
+```bash
+docker compose run --rm --no-deps \
+  -v ../Keimelion-API/src/db/seed/fixtures:/app/src/db/seed/fixtures:ro \
+  api node dist/db/seed/index.js
+```
 
-## Incidents connus
+## Postgres backup
 
-## NEXT_PUBLIC_API_URL figée au build
+## Postgres restore
 
-`NEXT_PUBLIC_API_URL` est injectée dans le bundle du back-office au build. Changer de domaine (ex. passage à `api.keimelion.app` en prod) impose un rebuild de l'image `back` avec la nouvelle URL en argument de build.
+Disaster recovery on a fresh machine: run `scripts/setup-data-dirs.sh` before starting the stack, then restore the dump.
 
-## Redirection langue Landing
+## Secret rotation
 
-La redirection vers `/en/` selon la langue du navigateur (définie dans `vercel.json`) n'est pas active dans l'image Docker. À reporter dans le Caddyfile lors de l'exposition à internet.
+## Reboot and post-reboot checks
 
-## Accéder à la DB depuis une station de dev
+## Known incidents
 
-Postgres n'écoute que sur `127.0.0.1:5432` du serveur : passer par un tunnel SSH (`ssh -L 5433:localhost:5432 milky-way -N`) puis se connecter à `postgres://keimelion:<POSTGRES_PASSWORD>@localhost:5433/keimelion`. Le tunnel est authentifié par la clé SSH : inutile d'ouvrir 5432 sur le pare-feu.
+## NEXT_PUBLIC_API_URL is baked in at build time
+
+`NEXT_PUBLIC_API_URL` is inlined into the back-office bundle at build time. Changing domain (e.g. moving to `api.keimelion.app` in production) requires rebuilding the `back` image with the new URL as a build argument.
+
+## Landing language redirect
+
+The redirect to `/en/` based on the browser language (defined in `vercel.json`) is not active in the Docker image. Port it to the Caddyfile when exposing to the internet.
+
+## Networking & firewall
+
+- Docker publishes ports through its own iptables rules (NAT + `FORWARD` chain, filterable only in `DOCKER-USER`), not through `INPUT`: **UFW rules do not apply to published ports**.
+- Debug ports (api 3000, back 3001, landing 3002, postgres 5432) are deliberately bound to `127.0.0.1`: reach them through an SSH tunnel from a dev workstation.
+- The landing is reachable with `ssh -L 8080:localhost:3002 milky-way -N`, then http://localhost:8080 on the workstation. It will move behind Caddy with hostname-based routing (future ticket).
+- Caddy on `:80` is the only LAN entry point (`ufw allow 80/tcp` is there for an honest `ufw status`, not for protection).
+- Protection from the internet currently relies only on the router NAT (no port forwarding). The exposure ticket must address it (`ufw-docker` or binding to the LAN IP).
+
+## Accessing the DB from a dev workstation
+
+Postgres only listens on the server's `127.0.0.1:5432`: open an SSH tunnel (`ssh -L 5433:localhost:5432 milky-way -N`), then connect to `postgres://keimelion:<POSTGRES_PASSWORD>@localhost:5433/keimelion`. The tunnel is authenticated by your SSH key: no need to open 5432 on the firewall.

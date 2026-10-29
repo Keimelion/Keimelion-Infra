@@ -1,30 +1,30 @@
 # Keimelion-Infra
 
-Configuration du serveur home Keimelion (`milky-way`), versionnée et reproductible :
-Postgres + API + Back-office + Landing orchestrés par Docker Compose, redémarrage
-automatique au boot.
+Versioned, reproducible configuration of the Keimelion home server (`milky-way`):
+Postgres + API + Back-office + Landing orchestrated by Docker Compose, restarted
+automatically on boot.
 
-Ce repo ne contient **aucun code applicatif** ni **aucun secret** : il référence les
-repos frères clonés à côté de lui et lit ses secrets dans un `.env` local non versionné.
+This repo contains **no application code** and **no secrets**: it references the
+sibling repos cloned next to it and reads its secrets from a local, unversioned `.env`.
 
-## Prérequis
+## Prerequisites
 
 - Debian 13 (trixie)
-- Docker Engine + plugin Compose, installés depuis le dépôt officiel Docker
-  (https://docs.docker.com/engine/install/debian/) — pas le paquet `docker.io` de Debian
-- Utilisateur dans le groupe `docker`
-- Clé SSH autorisée sur l'organisation GitHub `Keimelion`
-- Les repos frères clonés dans `~/keimelion/` (voir arborescence ci-dessous)
+- Docker Engine + Compose plugin, installed from the official Docker repository
+  (https://docs.docker.com/engine/install/debian/) — not Debian's `docker.io` package
+- User in the `docker` group
+- SSH key authorized on the `Keimelion` GitHub organization
+- Sibling repos cloned in `~/keimelion/` (see layout below)
 
-## Arborescence attendue sur disque
+## Expected layout on disk
 
 ```
 ~/keimelion/
-├── Keimelion-Infra/          ← ce repo
+├── Keimelion-Infra/          ← this repo
 │   ├── docker-compose.yml
-│   ├── .env                  ← secrets locaux (gitignored)
+│   ├── .env                  ← local secrets (gitignored)
 │   ├── .env.example
-│   ├── data/                 ← volumes persistants (gitignored)
+│   ├── data/                 ← persistent volumes (gitignored)
 │   │   ├── postgres/
 │   │   └── uploads/
 │   ├── caddy/
@@ -35,10 +35,10 @@ repos frères clonés à côté de lui et lit ses secrets dans un `.env` local n
 └── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (main)
 ```
 
-Les chemins de build dans `docker-compose.yml` sont relatifs (`../Keimelion-API`, …) :
-les noms de dossiers ci-dessus doivent être respectés.
+Build paths in `docker-compose.yml` are relative (`../Keimelion-API`, …):
+the folder names above must be kept as is.
 
-## Setup initial
+## Initial setup
 
 ```bash
 cd ~/keimelion
@@ -50,16 +50,19 @@ git clone git@github.com:Keimelion/Keimelion-Landing.git
 cd Keimelion-Infra
 cp .env.example .env
 chmod 600 .env
-# Éditer .env : générer POSTGRES_PASSWORD (openssl rand -hex 32),
-# JWT_SECRET (openssl rand -base64 48), ajuster PUBLIC_API_URL / CORS_ORIGINS à l'IP du serveur
+# Edit .env: generate POSTGRES_PASSWORD (openssl rand -hex 32),
+# JWT_SECRET (openssl rand -base64 48), set PUBLIC_API_URL / CORS_ORIGINS to the server IP
+# Create data/ dirs with the right ownership BEFORE the first `up` (otherwise Docker
+# creates them as root and the API, running as uid 1000, cannot write uploads)
+scripts/setup-data-dirs.sh
 docker compose up -d --build
 docker compose ps
 ```
 
-Les migrations Drizzle sont appliquées automatiquement au démarrage de l'API.
-La seed (`npm run db:seed`) n'est **jamais** lancée automatiquement.
+Drizzle migrations are applied automatically when the API starts.
+The seed is **never** run automatically (see the runbook).
 
-## Mise à jour
+## Updating
 
 ```bash
 cd ~/keimelion
@@ -70,20 +73,25 @@ docker compose up -d --build
 
 ## Services
 
-| Service   | Port hôte              | Image / build             |
+| Service   | Host port              | Image / build             |
 |-----------|------------------------|---------------------------|
 | postgres  | 127.0.0.1:5432         | postgres:17-alpine        |
-| api       | 0.0.0.0:${API_PORT}    | ../Keimelion-API          |
-| back      | 0.0.0.0:${BACK_PORT}   | ../Keimelion-Backoffice   |
-| landing   | 0.0.0.0:${LANDING_PORT}| ../Keimelion-Landing      |
+| api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
+| back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
+| landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
+| caddy     | 0.0.0.0:80             | caddy:2-alpine            |
 
-Tous les services sont en `restart: unless-stopped` et Docker est activé au boot
-(`systemctl is-enabled docker`) : un reboot relance tout.
+Caddy is the LAN entry point (plain HTTP, no ACME yet): `/v1/*` and `/health` go to
+the API, `/uploads/*` is served from `data/uploads`, everything else goes to the back-office.
+The other ports are debug-only, bound to loopback (see the runbook, "Networking & firewall").
 
-## Backup Postgres
+All services use `restart: unless-stopped` and Docker is enabled at boot
+(`systemctl is-enabled docker`): a reboot brings everything back up.
 
-TODO — dump planifié (`pg_dump` via `docker compose exec postgres`), rétention, copie hors machine.
+## Postgres backup
 
-## Voir aussi
+TODO — scheduled dump (`pg_dump` via `docker compose exec postgres`), retention, off-machine copy.
 
-- [docs/runbook.md](docs/runbook.md) — procédures d'exploitation
+## See also
+
+- [docs/runbook.md](docs/runbook.md) — operating procedures
