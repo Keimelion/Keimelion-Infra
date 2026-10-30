@@ -71,10 +71,13 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Mount the whole caddy/ folder (not just the file) so `caddy reload`
+      # picks up edits — editors replace the inode on save, which breaks a
+      # single-file bind mount.
+      - ./caddy:/etc/caddy:ro
       # Read-only: only the API writes uploads
       - ./data/uploads:/srv/uploads:ro
-      # Certs + ACME state, unused until HTTPS is enabled
+      # Certs + ACME state, unused: TLS is terminated by the NAS reverse proxy
       - caddy_data:/data
       - caddy_config:/config
 

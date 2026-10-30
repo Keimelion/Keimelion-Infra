@@ -64,12 +64,31 @@ The seed is **never** run automatically (see the runbook).
 
 ## Updating
 
+Manual update, pulling every repo and rebuilding what changed:
+
 ```bash
 cd ~/keimelion
 for r in Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Infra; do git -C "$r" pull --ff-only; done
 cd Keimelion-Infra
 docker compose up -d --build
 ```
+
+A GitHub Actions deploy workflow with per-service health check and automatic
+rollback is planned (see `docs/runbook.md`, "Deploy a new version").
+
+## Public exposure
+
+The stack is reachable at:
+
+- https://keimelion.zalbani.dev           (landing)
+- https://admin.keimelion.zalbani.dev     (back-office)
+- https://api.keimelion.zalbani.dev       (API + `/uploads/*`)
+
+Flow: Cloudflare DNS (CNAME → `backward.zalbani.dev`) → home router (:443 and
+:80 forwarded to the NAS) → Synology reverse proxy (TLS, Let's Encrypt
+HTTP-01) → `http://192.168.1.102:80` → Caddy on milky-way. The NAS, DNS
+records and reverse-proxy entries are configured outside this repo
+(dashboard-managed); see `docs/runbook.md`, "Cloudflare / NAS exposure".
 
 ## Services
 
@@ -81,10 +100,13 @@ docker compose up -d --build
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
 | caddy     | 0.0.0.0:80             | caddy:2-alpine            |
 
-Caddy is the LAN entry point (plain HTTP, no ACME yet), routing by hostname:
-`keimelion.local` → landing, `admin.keimelion.local` → back-office,
-`api.keimelion.local` → API (+ `/uploads/*` served from `data/uploads`).
-The other ports are debug-only, bound to loopback (see the runbook, "Networking & firewall").
+Caddy routes by hostname and stays in plain HTTP. TLS for `*.keimelion.zalbani.dev`
+is terminated upstream by the Synology NAS (reverse proxy + Let's Encrypt), which
+forwards to `http://192.168.1.102:80` where Caddy dispatches to `landing:3002`,
+`back:3001` or `api:3000` (+ `/uploads/*` served from `data/uploads`). LAN hostnames
+`*.keimelion.local` are kept as a plain-HTTP fallback via `/etc/hosts`.
+The debug ports (api/back/landing/postgres) are bound to loopback — see the runbook
+("Networking & firewall", "Access from a LAN client").
 
 All services use `restart: unless-stopped` and Docker is enabled at boot
 (`systemctl is-enabled docker`): a reboot brings everything back up.
