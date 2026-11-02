@@ -33,12 +33,15 @@ address (TLS was terminated upstream).
 
 ## Deploy a new version
 
-Manual deploy (CI with rollback is in the backlog):
+Automatic: merging a release PR into `main` runs CI → semantic-release → deploy
+(health check + rollback). See [release-process.md](release-process.md).
+Manual redeploy of `main`: run the repo's `Deploy` workflow from GitHub.
+
+Fallback without CI (runner down):
 
 ```bash
 cd ~/keimelion
-# Pull the ONE repo you want to deploy; e.g. the API dev branch:
-git -C Keimelion-API pull --ff-only
+git -C Keimelion-API pull --ff-only   # every app repo tracks main on the server
 cd Keimelion-Infra
 docker compose up -d --build api  # or back / landing / caddy
 ```

@@ -1,0 +1,54 @@
+name: node-ci
+
+# Reusable quality gate, identical for every Keimelion app repo:
+# npm ci, then `lint typecheck test build` (a script the repo doesn't define is skipped).
+# Build-time env comes from the repo's `.env.example`.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: app
+
+      # The apps import API types through ../Keimelion-API (tsconfig alias).
+      - name: Checkout Keimelion-API (sibling)
+        if: github.event.repository.name != 'Keimelion-API'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/Keimelion-API
+          path: Keimelion-API
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Use .env.example as build env
+        working-directory: app
+        run: if [ -f .env.example ]; then cp .env.example .env; fi
+
+      - name: Run scripts
+        working-directory: app
+        run: |
+          for script in lint typecheck test build; do
+            echo "::group::npm run $script"
+            npm run "$script" --if-present
+            echo "::endgroup::"
+          done

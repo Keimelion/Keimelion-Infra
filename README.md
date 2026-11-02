@@ -30,8 +30,8 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
 │   ├── caddy/
 │   ├── scripts/
 │   └── docs/runbook.md
-├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (dev)
-├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (dev)
+├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (main)
+├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (main)
 └── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (main)
 ```
 
@@ -43,8 +43,8 @@ the folder names above must be kept as is.
 ```bash
 cd ~/keimelion
 git clone git@github.com:Keimelion/Keimelion-Infra.git
-git clone -b dev git@github.com:Keimelion/Keimelion-API.git
-git clone -b dev git@github.com:Keimelion/Keimelion-Backoffice.git
+git clone -b main git@github.com:Keimelion/Keimelion-API.git
+git clone -b main git@github.com:Keimelion/Keimelion-Backoffice.git
 git clone git@github.com:Keimelion/Keimelion-Landing.git
 
 cd Keimelion-Infra
@@ -73,8 +73,9 @@ cd Keimelion-Infra
 docker compose up -d --build
 ```
 
-A GitHub Actions deploy workflow with per-service health check and automatic
-rollback is planned (see `docs/runbook.md`, "Deploy a new version").
+Releases deploy automatically through GitHub Actions (self-hosted runner, health
+check + rollback); the reusable CI/release/deploy workflows live in this repo — see
+[docs/release-process.md](docs/release-process.md).
 
 ## Public exposure
 
@@ -118,3 +119,4 @@ TODO — scheduled dump (`pg_dump` via `docker compose exec postgres`), retentio
 ## See also
 
 - [docs/runbook.md](docs/runbook.md) — operating procedures
+- [docs/release-process.md](docs/release-process.md) — CI, release & deploy
