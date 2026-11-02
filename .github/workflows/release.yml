@@ -87,16 +87,21 @@ jobs:
           echo "::notice::Released $TAG"
 
       - name: Sync dev onto main
-        # A sync hiccup must not block the deploy of an already-tagged release.
+        # Runs even when the release failed, so dev always follows main. A sync hiccup
+        # must not block the deploy of an already-tagged release.
+        if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           SYNC_BRANCH: dev
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
         run: |
+          # Sync to what is really on main, never to the local HEAD: a release that failed
+          # after committing locally must not leak its unpushed commit into dev.
+          git fetch origin main
           # Fast-forward only: succeeds whenever the release PR was merged with a merge
           # commit and nothing landed on $SYNC_BRANCH since.
-          if git push origin "HEAD:refs/heads/$SYNC_BRANCH"; then
-            echo "::notice::$SYNC_BRANCH fast-forwarded to $(git rev-parse --short HEAD)"
+          if git push origin "refs/remotes/origin/main:refs/heads/$SYNC_BRANCH"; then
+            echo "::notice::$SYNC_BRANCH fast-forwarded to $(git rev-parse --short origin/main)"
             exit 0
           fi
           echo "::warning::$SYNC_BRANCH has commits not on main, opening a sync PR (merge it with a merge commit, not squash)"
