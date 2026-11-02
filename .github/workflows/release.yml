@@ -1,0 +1,111 @@
+name: release
+
+# Reusable semantic-release run on `main`, then fast-forward of `dev` onto `main`
+# so both branches stay on the same history.
+#
+# Token: uses the Keimelion release GitHub App when RELEASE_APP_ID /
+# RELEASE_APP_PRIVATE_KEY are set (required once `main`/`dev` are protected by a
+# ruleset — the App is the bypass actor), otherwise falls back to GITHUB_TOKEN.
+
+on:
+  workflow_call:
+    secrets:
+      RELEASE_APP_ID:
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+    outputs:
+      published:
+        description: "'true' when a new version was tagged"
+        value: ${{ jobs.release.outputs.published }}
+      version:
+        description: The new version (without the leading v), empty if none
+        value: ${{ jobs.release.outputs.version }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: semantic-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      HAS_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+    outputs:
+      published: ${{ steps.result.outputs.published }}
+      version: ${{ steps.result.outputs.version }}
+    steps:
+      - name: Generate release App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # The checkout token is persisted as git credentials and takes precedence over
+      # the one semantic-release injects: it must be the App token for pushes to
+      # bypass branch rulesets.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+
+      # @semantic-release/git commits then tags HEAD locally before pushing.
+      - name: Result
+        id: result
+        run: |
+          TAG=$(git tag --points-at HEAD --list 'v*' | head -n 1)
+          if [ -z "$TAG" ]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release-worthy commits, nothing published"
+            exit 0
+          fi
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Released $TAG"
+
+      - name: Sync dev onto main
+        # A sync hiccup must not block the deploy of an already-tagged release.
+        continue-on-error: true
+        env:
+          SYNC_BRANCH: dev
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
+          # Fast-forward only: succeeds whenever the release PR was merged with a merge
+          # commit and nothing landed on $SYNC_BRANCH since.
+          if git push origin "HEAD:refs/heads/$SYNC_BRANCH"; then
+            echo "::notice::$SYNC_BRANCH fast-forwarded to $(git rev-parse --short HEAD)"
+            exit 0
+          fi
+          echo "::warning::$SYNC_BRANCH has commits not on main, opening a sync PR (merge it with a merge commit, not squash)"
+          if [ -n "$(gh pr list --base "$SYNC_BRANCH" --head main --state open --json number --jq '.[]')" ]; then
+            echo "Sync PR already open"
+            exit 0
+          fi
+          gh pr create \
+            --base "$SYNC_BRANCH" \
+            --head main \
+            --title "chore: sync main into $SYNC_BRANCH" \
+            --body "\`$SYNC_BRANCH\` could not be fast-forwarded onto \`main\` after the release. **Merge with a merge commit** (not squash) to keep both branches on the same history."

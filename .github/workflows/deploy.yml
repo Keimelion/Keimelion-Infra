@@ -1,0 +1,90 @@
+name: deploy
+
+# Reusable deploy of the calling repo's compose service on milky-way (self-hosted
+# runner), with health check and automatic rollback to the previously deployed commit.
+# The repo → service mapping lives here, next to docker-compose.yml.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: [self-hosted, keimelion]
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      REPO_DIR: ${{ github.event.repository.name }}
+      BRANCH: main
+    steps:
+      - name: Resolve service
+        run: |
+          case "$REPO_DIR" in
+            Keimelion-API)        SERVICE=api;     HEALTH_URL=https://api.keimelion.zalbani.dev/health ;;
+            Keimelion-Backoffice) SERVICE=back;    HEALTH_URL=https://admin.keimelion.zalbani.dev/ ;;
+            Keimelion-Landing)    SERVICE=landing; HEALTH_URL=https://keimelion.zalbani.dev/ ;;
+            *) echo "::error::No compose service mapped for $REPO_DIR"; exit 1 ;;
+          esac
+          echo "SERVICE=$SERVICE" >> "$GITHUB_ENV"
+          echo "HEALTH_URL=$HEALTH_URL" >> "$GITHUB_ENV"
+
+      - name: Detect new version
+        id: version
+        run: |
+          cd ~/keimelion/"$REPO_DIR"
+          git fetch --prune origin "$BRANCH"
+          # Force-switch to the deploy branch so PREV reflects what's deployed,
+          # not whatever branch a human last checked out on the server.
+          git checkout -f "$BRANCH"
+          PREV=$(git rev-parse HEAD)
+          NEXT=$(git rev-parse "origin/$BRANCH")
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "::notice::$REPO_DIR @ $BRANCH"
+          echo "  from: $PREV"
+          echo "  to:   $NEXT"
+          if [ "$PREV" = "$NEXT" ]; then
+            echo "::notice::Already at $NEXT, downstream steps will skip"
+          fi
+
+      - name: Pull & build
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          cd ~/keimelion/"$REPO_DIR"
+          git reset --hard "${{ steps.version.outputs.next }}"
+          cd ~/keimelion/Keimelion-Infra
+          docker compose build "$SERVICE"
+
+      - name: Deploy
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          cd ~/keimelion/Keimelion-Infra
+          docker compose up -d "$SERVICE"
+
+      - name: Health check
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          sleep 5
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; then
+              echo "::notice::Health check passed on attempt $i ($HEALTH_URL)"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::Health check failed after 30 attempts on $HEALTH_URL"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure() && steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          echo "::warning::Rolling $REPO_DIR back to ${{ steps.version.outputs.prev }}"
+          cd ~/keimelion/"$REPO_DIR"
+          git reset --hard "${{ steps.version.outputs.prev }}"
+          cd ~/keimelion/Keimelion-Infra
+          docker compose up -d --build "$SERVICE"

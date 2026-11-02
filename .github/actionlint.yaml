@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # milky-way deploy runner (see docs/release-process.md)
+  labels:
+    - keimelion
