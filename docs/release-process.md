@@ -77,10 +77,17 @@ Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *
   the `Keimelion-Infra/.github/workflows/deploy.yml` workflow.
 - **Branches & merge methods** (all three app repos): default branch `dev`; allow
   *squash* (feature PRs) **and** *merge commits* (release PRs).
-- **Release GitHub App** (needed as soon as `main`/`dev` are protected): create an
-  org App with *Contents: read & write*, *Issues* and *Pull requests: read & write*,
-  install it on the three repos, store `RELEASE_APP_ID` and
-  `RELEASE_APP_PRIVATE_KEY` as **org secrets**, and add the App as bypass actor of
-  the rulesets. Without these secrets the release falls back to `GITHUB_TOKEN`.
-- **Rulesets** on `main` and `dev`: require a PR, require the `CI` status checks
-  (`ci / …`, `pr-title / …`), block force-push and deletion.
+- **Release GitHub App** `keimelion-release` (owned by the org, installed on the three
+  app repos): *Contents*, *Issues*, *Pull requests* read & write. Its credentials are the
+  org secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`; without them the release
+  falls back to `GITHUB_TOKEN` (which cannot bypass rulesets).
+- **Rulesets** are versioned in `github/rulesets/<kind>/` and applied with
+  `scripts/apply-rulesets.sh [repo...]` (create or update by name; needs repo admin):
+  - `apps/` (API, Back-office, Landing) — `main`: PR required, **merge commit only**
+    (release PRs); `dev`: squash (feature PRs) or merge (sync PR fallback); both require
+    the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
+    + tag on `main`, fast-forward of `dev`)
+  - `infra/` (this repo) — `main`: PR required, squash only, `actionlint` check, no bypass
+    (every app pipeline calls these workflows on `@main`)
+  - `collections/` (Keimelion-API-collections) — `main`: no deletion, no force-push
+  - all: no deletion, no force-push
