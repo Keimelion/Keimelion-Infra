@@ -30,7 +30,8 @@ every PR here).
  main ─ push ─▶ release.yml:  ci ──▶ release ──▶ deploy (only if a tag was created)
                                        │  semantic-release: vX.Y.Z tag, GitHub Release,
                                        │  CHANGELOG.md + package.json, "chore(release) [skip ci]"
-                                       └─ fast-forward dev ← main (sync PR if dev moved meanwhile)
+                                       └─ fast-forward dev ← main, even if the release failed
+                                          (sync PR if dev moved meanwhile)
 ```
 
 ### Why a merge commit for the release PR
