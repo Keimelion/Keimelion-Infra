@@ -36,7 +36,7 @@ jobs:
       - name: Detect new version
         id: version
         run: |
-          cd ~/keimelion/$REPO_DIR
+          cd ~/keimelion/"$REPO_DIR"
           git fetch --prune origin "$BRANCH"
           # Force-switch to the deploy branch so PREV reflects what's deployed,
           # not whatever branch a human last checked out on the server.
@@ -55,7 +55,7 @@ jobs:
       - name: Pull & build
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
-          cd ~/keimelion/$REPO_DIR
+          cd ~/keimelion/"$REPO_DIR"
           git reset --hard "${{ steps.version.outputs.next }}"
           cd ~/keimelion/Keimelion-Infra
           docker compose build "$SERVICE"
@@ -84,7 +84,7 @@ jobs:
         if: failure() && steps.version.outputs.prev != steps.version.outputs.next
         run: |
           echo "::warning::Rolling $REPO_DIR back to ${{ steps.version.outputs.prev }}"
-          cd ~/keimelion/$REPO_DIR
+          cd ~/keimelion/"$REPO_DIR"
           git reset --hard "${{ steps.version.outputs.prev }}"
           cd ~/keimelion/Keimelion-Infra
           docker compose up -d --build "$SERVICE"
