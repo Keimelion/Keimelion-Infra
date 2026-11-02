@@ -31,7 +31,7 @@ every PR here).
                                        │  semantic-release: vX.Y.Z tag, GitHub Release,
                                        │  CHANGELOG.md + package.json, "chore(release) [skip ci]"
                                        └─ fast-forward dev ← main, even if the release failed
-                                          (sync PR if dev moved meanwhile)
+                                          (the App merges main into dev if dev moved meanwhile)
 ```
 
 ### Why a merge commit for the release PR
@@ -85,9 +85,9 @@ Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *
 - **Rulesets** are versioned in `github/rulesets/<kind>/` and applied with
   `scripts/apply-rulesets.sh [repo...]` (create or update by name; needs repo admin):
   - `apps/` (API, Back-office, Landing) — `main`: PR required, **merge commit only**
-    (release PRs); `dev`: squash (feature PRs) or merge (sync PR fallback); both require
+    (release PRs); `dev`: **squash only** (feature PRs); both require
     the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
-    + tag on `main`, fast-forward of `dev`)
+    + tag on `main`, fast-forward of `dev`, or merge of `main` into `dev` if it moved)
   - `infra/` (this repo) — `main`: PR required, squash only, `actionlint` check, no bypass
     (every app pipeline calls these workflows on `@main`)
   - `collections/` (Keimelion-API-collections) — `main`: no deletion, no force-push
