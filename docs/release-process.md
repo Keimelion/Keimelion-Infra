@@ -6,7 +6,7 @@ same thin callers, **byte-for-byte identical** (no inputs):
 
 | In each app repo | Calls (here) | Role |
 |---|---|---|
-| `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit |
+| `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors left for review) |
 | `release.yml` (push main) | `node-ci.yml` → `release.yml` → `deploy.yml` | semantic-release, fast-forward `dev` onto `main`, deploy if a tag was created |
 | `deploy.yml` (manual) | `deploy.yml` | redeploy `main` |
 | `codeql.yml` | `codeql.yml` | CodeQL `security-and-quality` |
