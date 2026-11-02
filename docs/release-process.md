@@ -46,15 +46,23 @@ Conventional Commit, validated by `pr-title.yml` and, locally, by commitlint).
 
 The bump is **computed**, never chosen by hand: semantic-release
 (`conventionalcommits` preset) takes the highest bump among the commits since the
-last tag. With squash merges, "commit" = **PR title** (+ PR description for footers).
+last tag. With squash merges, "commit" = **PR title** + **PR description** (the squash
+body): a `BREAKING CHANGE:` / `Breaking change:` line in a PR description counts too,
+case-insensitive.
 
-| PR title | Bump | Example |
+The apps are in **0.x** (not 1.0 yet): `.releaserc.json` maps breaking changes to a
+**minor** bump (`releaseRules`). Going 1.0 is an explicit decision: remove that rule (the
+next breaking change gives `1.0.0`) or tag `v1.0.0` by hand.
+
+| PR title | Bump in 0.x | Example |
 |---|---|---|
-| `fix: …` | patch `1.2.3 → 1.2.4` | `fix: lists/:id 404 on archived list (KEI-150)` |
-| `perf: …`, `revert: …` | patch | `perf: index list_items.list_id (KEI-151)` |
-| `feat: …` | minor `1.2.3 → 1.3.0` | `feat: users/me/export CSV (KEI-37)` |
-| `<type>!: …` or `BREAKING CHANGE:` footer | major `1.2.3 → 2.0.0` | `feat!: drop /v0 routes (KEI-160)` |
+| `fix: …`, `perf: …`, `revert: …` | patch `0.3.1 → 0.3.2` | `fix: lists/:id 404 on archived list (KEI-150)` |
+| `feat: …` | minor `0.3.1 → 0.4.0` | `feat: users/me/export CSV (KEI-37)` |
+| `<type>!: …` or `BREAKING CHANGE:` footer | minor `0.3.1 → 0.4.0` (major after 1.0) | `feat!: drop /v0 routes (KEI-160)` |
 | `chore`, `ci`, `docs`, `refactor`, `test`, `style`, `build` | none — no tag, no deploy | `chore: bump deps` |
+
+GitHub Releases are created without commenting the released PRs/issues
+(`successComment: false`, `releasedLabels: false`).
 
 - The release PR title doesn't matter (merge commits are ignored): use `chore: release`.
 - The release commit is written by semantic-release: `chore(release): X.Y.Z [skip ci]`.
