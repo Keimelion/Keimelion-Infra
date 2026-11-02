@@ -68,7 +68,7 @@ jobs:
           sleep 5
           for url in https://api.keimelion.zalbani.dev/health https://admin.keimelion.zalbani.dev/ https://keimelion.zalbani.dev/; do
             ok=false
-            for i in $(seq 1 30); do
+            for _ in $(seq 1 30); do
               if curl -fsS -o /dev/null --max-time 5 "$url"; then ok=true; break; fi
               sleep 3
             done
