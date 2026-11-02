@@ -93,24 +93,26 @@ jobs:
         continue-on-error: true
         env:
           SYNC_BRANCH: dev
-          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
         run: |
           # Sync to what is really on main, never to the local HEAD: a release that failed
           # after committing locally must not leak its unpushed commit into dev.
-          git fetch origin main
-          # Fast-forward only: succeeds whenever the release PR was merged with a merge
-          # commit and nothing landed on $SYNC_BRANCH since.
+          git fetch origin main "$SYNC_BRANCH"
+          # Fast-forward: succeeds whenever nothing landed on $SYNC_BRANCH since the release
+          # PR was merged.
           if git push origin "refs/remotes/origin/main:refs/heads/$SYNC_BRANCH"; then
             echo "::notice::$SYNC_BRANCH fast-forwarded to $(git rev-parse --short origin/main)"
             exit 0
           fi
-          echo "::warning::$SYNC_BRANCH has commits not on main, opening a sync PR (merge it with a merge commit, not squash)"
-          if [ -n "$(gh pr list --base "$SYNC_BRANCH" --head main --state open --json number --jq '.[]')" ]; then
-            echo "Sync PR already open"
-            exit 0
+          # $SYNC_BRANCH moved meanwhile: the release App (ruleset bypass actor) merges main
+          # into it directly, since $SYNC_BRANCH only accepts squash PRs.
+          echo "::warning::$SYNC_BRANCH has commits not on main, merging main into it"
+          git checkout -B "$SYNC_BRANCH" "origin/$SYNC_BRANCH"
+          if ! git -c user.name='keimelion-release[bot]' \
+                  -c user.email='351634360+keimelion-release[bot]@users.noreply.github.com' \
+                  merge --no-ff --no-edit -m "chore: sync main into $SYNC_BRANCH" origin/main; then
+            git merge --abort
+            echo "::error::Conflicts merging main into $SYNC_BRANCH. Fix with a PR into $SYNC_BRANCH from a branch where origin/main is merged and conflicts resolved; the next release run fast-forwards again."
+            exit 1
           fi
-          gh pr create \
-            --base "$SYNC_BRANCH" \
-            --head main \
-            --title "chore: sync main into $SYNC_BRANCH" \
-            --body "\`$SYNC_BRANCH\` could not be fast-forwarded onto \`main\` after the release. **Merge with a merge commit** (not squash) to keep both branches on the same history."
+          git push origin "HEAD:refs/heads/$SYNC_BRANCH"
+          echo "::notice::main merged into $SYNC_BRANCH ($(git rev-parse --short HEAD))"
