@@ -46,7 +46,12 @@ cd Keimelion-Infra
 docker compose up -d --build api  # or back / landing / caddy
 ```
 
-Reload Caddy after editing `caddy/Caddyfile` **without** restarting the
+Infra changes (compose, Caddyfile) are applied automatically after a merge on `main`
+by `deploy-infra.yml` (pull, `docker compose up -d --no-build`, Caddy reload, health
+check, rollback). Never edit tracked files directly on the server: the workflow refuses
+to run until they are committed or discarded.
+
+Manual reload of Caddy after editing `caddy/Caddyfile` **without** restarting the
 container (zero downtime):
 
 ```bash

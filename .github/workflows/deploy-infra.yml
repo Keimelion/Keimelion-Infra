@@ -1,0 +1,89 @@
+name: deploy-infra
+
+# Applies this repo on milky-way after a merge on main: pull ~/keimelion/Keimelion-Infra,
+# `docker compose up -d` (recreates only the services whose config changed, never rebuilds
+# the app images — their own deploy does), reload Caddy if caddy/ changed, then health
+# check every public URL; rollback to the previous commit on failure.
+# .env and data/ are untracked: never touched.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Apply Infra
+    runs-on: [self-hosted, keimelion]
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      INFRA_DIR: keimelion/Keimelion-Infra
+    steps:
+      - name: Detect new version
+        id: version
+        run: |
+          cd ~/"$INFRA_DIR"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::Tracked files edited by hand on the server, commit them or discard them first:"
+            git status --short --untracked-files=no
+            exit 1
+          fi
+          git fetch --prune origin main
+          git checkout -q main
+          PREV=$(git rev-parse HEAD)
+          NEXT=$(git rev-parse origin/main)
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          if [ "$PREV" = "$NEXT" ]; then
+            echo "::notice::Already at $NEXT, nothing to apply"
+            exit 0
+          fi
+          if git diff --quiet "$PREV" "$NEXT" -- caddy/; then
+            echo "caddy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "caddy=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::notice::Keimelion-Infra ${PREV:0:7} -> ${NEXT:0:7}"
+          git diff --stat "$PREV" "$NEXT"
+
+      - name: Apply
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          cd ~/"$INFRA_DIR"
+          git reset -q --hard "${{ steps.version.outputs.next }}"
+          docker compose up -d --no-build
+          if [ "${{ steps.version.outputs.caddy }}" = "true" ]; then
+            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+          fi
+
+      - name: Health check
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          sleep 5
+          for url in https://api.keimelion.zalbani.dev/health https://admin.keimelion.zalbani.dev/ https://keimelion.zalbani.dev/; do
+            ok=false
+            for i in $(seq 1 30); do
+              if curl -fsS -o /dev/null --max-time 5 "$url"; then ok=true; break; fi
+              sleep 3
+            done
+            if [ "$ok" != true ]; then
+              echo "::error::Health check failed on $url"
+              exit 1
+            fi
+            echo "::notice::$url OK"
+          done
+
+      - name: Rollback on failure
+        if: failure() && steps.version.outputs.prev != '' && steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          echo "::warning::Rolling Keimelion-Infra back to ${{ steps.version.outputs.prev }}"
+          cd ~/"$INFRA_DIR"
+          git reset -q --hard "${{ steps.version.outputs.prev }}"
+          docker compose up -d --no-build
+          docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile

@@ -64,7 +64,17 @@ The seed is **never** run automatically (see the runbook).
 
 ## Updating
 
-Manual update, pulling every repo and rebuilding what changed:
+Automatic, through GitHub Actions on the self-hosted runner (health check + rollback):
+
+- **App releases** deploy their own service (reusable workflows of this repo, see
+  [docs/release-process.md](docs/release-process.md)).
+- **This repo**: every merge on `main` runs `deploy-infra.yml`, which pulls
+  `~/keimelion/Keimelion-Infra`, runs `docker compose up -d --no-build` (recreates only
+  the services whose config changed) and reloads Caddy when `caddy/` changed. It refuses
+  to run if tracked files were edited by hand on the server. `.env` changes are not in
+  git: apply them by hand (`docker compose up -d`).
+
+Manual fallback (runner down), pulling every repo and rebuilding what changed:
 
 ```bash
 cd ~/keimelion
@@ -72,10 +82,6 @@ for r in Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Infra; d
 cd Keimelion-Infra
 docker compose up -d --build
 ```
-
-Releases deploy automatically through GitHub Actions (self-hosted runner, health
-check + rollback); the reusable CI/release/deploy workflows live in this repo — see
-[docs/release-process.md](docs/release-process.md).
 
 ## Public exposure
 
