@@ -81,9 +81,13 @@ Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *
   app repos): *Contents*, *Issues*, *Pull requests* read & write. Its credentials are the
   org secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`; without them the release
   falls back to `GITHUB_TOKEN` (which cannot bypass rulesets).
-- **Rulesets** are versioned in `github/rulesets/` and applied to the three app repos
-  with `scripts/apply-rulesets.sh` (create or update by name; needs repo admin):
-  - `main`: PR required, **merge commit only** (release PRs), `ci` + `pr-title` checks
-  - `dev`: PR required, squash (feature PRs) or merge (sync PR fallback), same checks
-  - both: no deletion, no force-push; the release App is the only bypass actor (release
-    commit + tag on `main`, fast-forward of `dev`)
+- **Rulesets** are versioned in `github/rulesets/<kind>/` and applied with
+  `scripts/apply-rulesets.sh [repo...]` (create or update by name; needs repo admin):
+  - `apps/` (API, Back-office, Landing) — `main`: PR required, **merge commit only**
+    (release PRs); `dev`: squash (feature PRs) or merge (sync PR fallback); both require
+    the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
+    + tag on `main`, fast-forward of `dev`)
+  - `infra/` (this repo) — `main`: PR required, squash only, `actionlint` check, no bypass
+    (every app pipeline calls these workflows on `@main`)
+  - `collections/` (Keimelion-API-collections) — `main`: no deletion, no force-push
+  - all: no deletion, no force-push
