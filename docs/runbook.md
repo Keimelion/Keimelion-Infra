@@ -174,6 +174,20 @@ The redirect to `/en/` based on the browser language (defined in `vercel.json`) 
 - Caddy on `:80` is bound to `0.0.0.0`. It is the only entry point from the LAN **and** from the NAS reverse proxy, routing by `Host` header (see "Cloudflare / NAS exposure" and "Access from a LAN client"). UFW is currently **inactive**.
 - The home router forwards `:80` and `:443` to the Synology NAS (`192.168.1.100`), which handles TLS for `*.zalbani.dev`. No port is forwarded directly to milky-way (`192.168.1.102`).
 
+## Client IP behind the NAS
+
+Caddy only sees the NAS (`192.168.1.100`), which appends the visitor's IP to
+`X-Forwarded-For`. The Caddyfile trusts that one proxy in strict mode (the client IP is the
+right-most address the NAS didn't add, so a forged `X-Forwarded-For` is ignored) and sends
+the API `X-Forwarded-For: <client IP>` alone, which is what its rate limiter keys on.
+If the NAS IP changes, update `trusted_proxies` or every visitor shares one rate-limit bucket
+again. Check: `docker compose logs caddy | grep -o '"client_ip":"[^"]*"' | sort | uniq -c`.
+
+## Container logs
+
+Rotated by Docker: 3 files of 10 MB per service (`x-logging` in `docker-compose.yml`),
+so `docker compose logs` covers the recent past only. Older access logs are gone by design.
+
 ## Cloudflare / NAS exposure
 
 The public hostnames follow the same rail as `ha.zalbani.dev` and
