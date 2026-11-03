@@ -10,7 +10,7 @@ works.
 | **RPO** (max data loss) | 6 h — 0 for a deploy (snapshot taken right before) |
 | **RTO** (restore time) | ~15 s at the current size (measured by every restore test, see its log) |
 | **Copies** | live data + local repository (`/var/backups/keimelion`) + Synology NAS (SFTP) |
-| **Alerting** | Healthchecks.io: a failure **or a missing run** sends an alert |
+| **Alerting** | Uptime Kuma push monitors (on the NAS): a failure **or a missing run** sends an alert |
 
 ```
                  every 6 h / before each deploy                      weekly (Sun 04:45)
@@ -36,7 +36,7 @@ per day for 14 days, per week for 8 weeks, per month for 12 months.
 
 ## Jobs
 
-| systemd unit | When | Script | Healthchecks |
+| systemd unit | When | Script | Monitoring |
 |---|---|---|---|
 | `keimelion-db-backup.timer` → `keimelion-db-backup@scheduled` | 00:15, 06:15, 12:15, 18:15 (± 5 min, caught up at boot) | `db-backup.sh scheduled` | `HC_BACKUP_URL` |
 | `keimelion-db-backup@pre-deploy` | `deploy.yml` (API) and `deploy-infra.yml`, before `up -d` | `db-backup.sh pre-deploy` | — (fails the deploy) |
@@ -86,10 +86,16 @@ copies the snapshot).
    It generates `secrets/restic-password` if missing. **Copy it into the password manager
    immediately** (entry "Keimelion restic"): it is the only key to the backups, and it is
    lost with the server.
-4. **Healthchecks.io**: create two checks and paste their ping URLs into `.env`:
-   - `keimelion-backup`: period 6 h, grace 1 h → `HC_BACKUP_URL`
-   - `keimelion-backup-verify`: period 7 days, grace 1 day → `HC_VERIFY_URL`
-5. **First run**, then check both checks went green:
+4. **Monitoring**: in Uptime Kuma, create two **Push** monitors and paste their push URLs
+   into `.env` (the `?status=…` part is ignored, the scripts send `status=up|down` and a
+   one-line message: the duration, or the error):
+   - `Keimelion backup`: heartbeat interval 25200 s (6 h + 1 h) → `HC_BACKUP_URL`
+   - `Keimelion backup verify`: heartbeat interval 691200 s (7 d + 1 d) → `HC_VERIFY_URL`
+
+   Healthchecks.io URLs work too (`/start`, `/fail` and the log tail are sent). It is hosted
+   outside the house: the only option that still alerts when the NAS, which runs Kuma
+   and holds the off-site copy, is down.
+5. **First run**, then check both monitors went green:
    ```bash
    sudo systemctl start --wait keimelion-db-backup@manual.service
    sudo systemctl start --wait keimelion-backup-verify.service

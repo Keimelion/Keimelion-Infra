@@ -8,7 +8,7 @@
 #   3. freshness and checksum of the dump against its manifest
 #   4. pg_restore into a throwaway Postgres container (same image as production, no network)
 #   5. exact comparison of every table's row count with the counts taken at backup time
-# Pings HC_VERIFY_URL; production is never touched.
+# Pings HC_VERIFY_URL (Uptime Kuma or Healthchecks.io); production is never touched.
 SCRIPT_NAME=backup-verify
 FROM=${1:-auto}
 

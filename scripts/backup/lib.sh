@@ -73,10 +73,22 @@ ROWCOUNT_SQL="SELECT format('%I.%I', schemaname, tablename) || E'\t' ||
   (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', schemaname, tablename), false, true, '')))[1]::text
 FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY 1;"
 
-# Healthchecks.io pings (no-op when the URL is empty). $2: start | success | fail.
+# Monitoring pings (no-op when the URL is empty). $2: start | success | fail.
+# Healthchecks.io: POST <url>[/start|/fail] with the log tail as body.
+# Uptime Kuma push monitor (<kuma>/api/push/<token>, query string ignored): no start event,
+# GET ?status=up|down with a one-line message (the last ERROR line on failure).
 hc_ping() {
-  local url=$1 event=$2 body=${3-}
+  local url=$1 event=$2 body=${3-} msg
   [ -n "$url" ] || return 0
+  if [[ "$url" == */api/push/* ]]; then
+    [ "$event" = start ] && return 0
+    msg=$(printf '%s\n' "$body" | grep 'ERROR' | tail -n 1 || true)
+    [ -n "$msg" ] || msg=$(printf '%s\n' "$body" | tail -n 1)
+    msg=${msg#*] }
+    curl -fsS -m 10 --retry 3 -o /dev/null -G --data-urlencode "status=$([ "$event" = fail ] && echo down || echo up)" \
+      --data-urlencode "msg=${msg:0:200}" "${url%%\?*}" || log "WARN: Uptime Kuma ping failed ($event)"
+    return 0
+  fi
   case "$event" in
     start) url="$url/start" ;;
     fail) url="$url/fail" ;;
