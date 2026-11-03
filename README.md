@@ -25,7 +25,7 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
 │   ├── .env                  ← local secrets (gitignored)
 │   ├── .env.example
 │   ├── data/                 ← persistent volumes (gitignored)
-│   │   ├── postgres/
+│   │   ├── postgresql/       ← Postgres 18+ (18/docker/ = PGDATA)
 │   │   └── uploads/
 │   ├── secrets/              ← restic password (gitignored, copy in the password manager)
 │   ├── caddy/
@@ -105,7 +105,7 @@ records and reverse-proxy entries are configured outside this repo
 
 | Service   | Host port              | Image / build             |
 |-----------|------------------------|---------------------------|
-| postgres  | 127.0.0.1:5432         | postgres:17.11-alpine     |
+| postgres  | 127.0.0.1:5432         | postgres:18.6-alpine      |
 | api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
 | back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |

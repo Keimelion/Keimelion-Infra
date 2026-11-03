@@ -82,6 +82,28 @@ docker compose run --rm --no-deps \
   api node dist/db/seed/index.js
 ```
 
+## Postgres major upgrade
+
+A major version cannot read the previous one's files: the upgrade is a dump/restore with
+the backup tooling, done through a PR (17 → 18 was #14 — `data/postgres`, the 17 cluster,
+is kept until the new one is trusted).
+
+1. PR: new `image:` tag (+ mount path if the image changed its layout). Before merging,
+   rehearse on a throwaway compose project with the new image: `db-restore.sh` of the
+   latest snapshot into it (`KEIMELION_INFRA_DIR=<rehearsal dir>`), API health check.
+2. Merge: `deploy-infra` takes the `pre-deploy` snapshot (old major), starts the new
+   major on an empty data dir; the API creates an empty schema, health checks pass.
+3. Restore the data right away (the safety backup would only save the empty base):
+   ```bash
+   restic -r /var/backups/keimelion/restic snapshots --tag pre-deploy --latest 1   # its ID
+   scripts/backup/db-restore.sh --snapshot <ID> --skip-safety-backup
+   docker compose exec postgres dropdb -U keimelion keimelion_pre_restore_<timestamp>   # the empty base
+   ```
+4. Run the restore test (`sudo systemctl start --wait keimelion-backup-verify`).
+5. Rollback: revert the PR — the old cluster comes back from its untouched data dir
+   (minus the writes made since the upgrade). Once confident, delete it
+   (`sudo rm -rf data/postgres`).
+
 ## Postgres backup
 
 Automatic (restic, every 6 h + before every deploy, copied to the NAS, restore-tested

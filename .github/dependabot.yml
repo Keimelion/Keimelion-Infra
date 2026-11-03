@@ -12,6 +12,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # A Postgres major is a dump/restore (docs/runbook.md "Postgres major upgrade")
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
       include: scope

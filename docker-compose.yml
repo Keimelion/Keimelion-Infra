@@ -4,7 +4,9 @@ services:
   postgres:
     # Exact minor pinned (Dependabot bumps it): a rebuild of the server gets the same
     # binaries as the backups were tested against.
-    image: postgres:17.11-alpine
+    # Major upgrades are a dump/restore, never a tag bump (docs/runbook.md "Postgres major
+    # upgrade"); Dependabot only proposes minors.
+    image: postgres:18.6-alpine
     restart: unless-stopped
     # Docker's default 64 MB /dev/shm is too small for parallel queries / big sorts.
     shm_size: 256mb
@@ -16,7 +18,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # Since 18 the image keeps PGDATA in /var/lib/postgresql/<major>/docker: mounting the
+      # parent lets a future major sit next to this one (pg_upgrade --link).
+      - ./data/postgresql:/var/lib/postgresql
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
