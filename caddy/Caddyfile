@@ -2,6 +2,23 @@
 	# No ACME: TLS is terminated by the Synology reverse proxy for *.zalbani.dev
 	# (and nothing for the LAN *.keimelion.local, plain HTTP by design).
 	auto_https off
+
+	# The NAS reverse proxy is the only client of the public hostnames: trust its
+	# X-Forwarded-For, read right to left (strict) so the client IP is the first address
+	# not added by the NAS. A client sending its own X-Forwarded-For cannot choose it.
+	servers {
+		trusted_proxies static 192.168.1.100
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+# The API rate-limits by X-Forwarded-For: pass it the client IP alone (without this, every
+# visitor arrived as the NAS and shared one bucket).
+(api_upstream) {
+	reverse_proxy api:3000 {
+		header_up X-Forwarded-For {client_ip}
+	}
 }
 
 # -----------------------------------------------------------------------------
@@ -28,7 +45,7 @@ http://api.keimelion.zalbani.dev {
 		header Cache-Control "public, max-age=3600"
 		file_server
 	}
-	reverse_proxy api:3000
+	import api_upstream
 }
 
 # -----------------------------------------------------------------------------
@@ -50,7 +67,7 @@ http://api.keimelion.local {
 		header Cache-Control "public, max-age=3600"
 		file_server
 	}
-	reverse_proxy api:3000
+	import api_upstream
 }
 
 # Direct IP fallback for a LAN machine without /etc/hosts entries.
