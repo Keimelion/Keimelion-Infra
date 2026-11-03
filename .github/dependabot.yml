@@ -7,3 +7,11 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+  # Pinned images of docker-compose.yml (postgres minor, caddy)
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope

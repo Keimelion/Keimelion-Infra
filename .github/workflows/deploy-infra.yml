@@ -4,7 +4,7 @@ name: deploy-infra
 # `docker compose up -d` (recreates only the services whose config changed, never rebuilds
 # the app images — their own deploy does), reload Caddy if caddy/ changed, then health
 # check every public URL; rollback to the previous commit on failure.
-# .env and data/ are untracked: never touched.
+# .env and data/ are untracked: never touched. A restic snapshot is taken before applying.
 
 on:
   push:
@@ -51,6 +51,22 @@ jobs:
           fi
           echo "::notice::Keimelion-Infra ${PREV:0:7} -> ${NEXT:0:7}"
           git diff --stat "$PREV" "$NEXT"
+
+      # A compose change can recreate postgres (image bump, settings): snapshot first.
+      # Warning only while scripts/backup/install.sh has not run yet (bootstrap: the units
+      # are installed from this checkout, after the merge that brings them).
+      - name: Pre-deploy backup
+        if: steps.version.outputs.prev != steps.version.outputs.next
+        run: |
+          if [ ! -f /etc/systemd/system/keimelion-db-backup@.service ]; then
+            echo "::warning::Backups not installed on the server (sudo scripts/backup/install.sh), applying without a snapshot"
+            exit 0
+          fi
+          if ! sudo -n systemctl start --wait keimelion-db-backup@pre-deploy.service; then
+            journalctl -u keimelion-db-backup@pre-deploy.service -n 40 --no-pager || true
+            echo "::error::Pre-deploy backup failed, apply aborted (nothing changed yet)"
+            exit 1
+          fi
 
       - name: Apply
         if: steps.version.outputs.prev != steps.version.outputs.next

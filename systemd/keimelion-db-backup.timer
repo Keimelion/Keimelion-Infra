@@ -1,0 +1,12 @@
+# Every 6 hours (RPO 6h). Persistent: a run missed while the server was off happens at boot.
+[Unit]
+Description=Keimelion scheduled backup
+
+[Timer]
+OnCalendar=*-*-* 00/6:15:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=keimelion-db-backup@scheduled.service
+
+[Install]
+WantedBy=timers.target
