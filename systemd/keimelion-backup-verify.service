@@ -1,0 +1,19 @@
+# Weekly restore test of the latest backup into a throwaway Postgres (production untouched).
+# Installed by scripts/backup/install.sh — edit here, then rerun it.
+[Unit]
+Description=Keimelion backup restore test
+Documentation=file://@INFRA_DIR@/docs/backup.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=@BACKUP_USER@
+ExecStart=@INFRA_DIR@/scripts/backup/backup-verify.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=2h
+NoNewPrivileges=yes
+ProtectSystem=full

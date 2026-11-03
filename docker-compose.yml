@@ -2,8 +2,15 @@ name: keimelion
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Exact minor pinned (Dependabot bumps it): a rebuild of the server gets the same
+    # binaries as the backups were tested against.
+    image: postgres:17.11-alpine
     restart: unless-stopped
+    # Docker's default 64 MB /dev/shm is too small for parallel queries / big sorts.
+    shm_size: 256mb
+    # Postgres stops on SIGINT (fast shutdown): leave it time to checkpoint instead of
+    # being SIGKILLed after Docker's default 10 s (crash recovery on next start).
+    stop_grace_period: 1m
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -17,6 +24,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   api:
     build: ../Keimelion-API

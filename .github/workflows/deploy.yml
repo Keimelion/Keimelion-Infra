@@ -60,6 +60,18 @@ jobs:
           cd ~/keimelion/Keimelion-Infra
           docker compose build "$SERVICE"
 
+      # The API applies its Drizzle migrations on start: never migrate without a fresh
+      # snapshot to roll back to (docs/backup.md). Runs as the backup user via systemd,
+      # allowed by /etc/sudoers.d/keimelion-backup (scripts/backup/install.sh).
+      - name: Pre-deploy backup
+        if: steps.version.outputs.prev != steps.version.outputs.next && env.SERVICE == 'api'
+        run: |
+          if ! sudo -n systemctl start --wait keimelion-db-backup@pre-deploy.service; then
+            journalctl -u keimelion-db-backup@pre-deploy.service -n 40 --no-pager || true
+            echo "::error::Pre-deploy backup failed, deploy aborted (nothing changed yet)"
+            exit 1
+          fi
+
       - name: Deploy
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |

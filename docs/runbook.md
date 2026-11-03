@@ -63,6 +63,15 @@ in the container through the host, and `caddy reload` picks them up.
 
 ## Database migrations
 
+Drizzle migrations (`Keimelion-API/src/db/migrations`) are applied by the API container on
+start (`npm run db:migrate` before `node dist/index.js`): deploying the API **is** migrating
+the database. The API deploy therefore takes a `pre-deploy` restic snapshot first and aborts
+if it fails. A failed health check rolls the code back, not the schema: a migration that
+must be undone is undone by restoring that snapshot ([backup.md](backup.md), scenario A).
+
+Write migrations that the previous release can still run against (add, then drop in a
+later release), so that a code rollback alone stays possible.
+
 ## Seeding the database
 
 Dev/test data only, never in production. The API image does not ship `src/db/seed`, so run the compiled seed in a one-off container with the fixtures mounted read-only (seeders are idempotent):
@@ -75,9 +84,20 @@ docker compose run --rm --no-deps \
 
 ## Postgres backup
 
+Automatic (restic, every 6 h + before every deploy, copied to the NAS, restore-tested
+weekly). Details, alerting and setup: [backup.md](backup.md).
+
+```bash
+systemctl list-timers 'keimelion-*'
+sudo systemctl start --wait keimelion-db-backup@manual   # backup now
+journalctl -u 'keimelion-*' -n 50
+```
+
 ## Postgres restore
 
-Disaster recovery on a fresh machine: run `scripts/setup-data-dirs.sh` before starting the stack, then restore the dump.
+`scripts/backup/db-restore.sh [--snapshot ID] [--from offsite]`: restores next to the live
+database, validates it, then swaps (the previous database is kept). Scenarios — bad
+migration, a few rows, server lost — in [backup.md](backup.md#restore).
 
 ## Secret rotation
 

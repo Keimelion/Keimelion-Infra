@@ -27,9 +27,11 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
 │   ├── data/                 ← persistent volumes (gitignored)
 │   │   ├── postgres/
 │   │   └── uploads/
+│   ├── secrets/              ← restic password (gitignored, copy in the password manager)
 │   ├── caddy/
-│   ├── scripts/
-│   └── docs/runbook.md
+│   ├── scripts/              ← scripts/backup/: backup, restore, restore test
+│   ├── systemd/              ← backup units + timers (installed by scripts/backup/install.sh)
+│   └── docs/
 ├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (main)
 ├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (main)
 └── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (main)
@@ -57,6 +59,8 @@ chmod 600 .env
 scripts/setup-data-dirs.sh
 docker compose up -d --build
 docker compose ps
+# Backups: see docs/backup.md "One-time setup"
+sudo scripts/backup/install.sh && scripts/backup/init-repos.sh
 ```
 
 Drizzle migrations are applied automatically when the API starts.
@@ -101,7 +105,7 @@ records and reverse-proxy entries are configured outside this repo
 
 | Service   | Host port              | Image / build             |
 |-----------|------------------------|---------------------------|
-| postgres  | 127.0.0.1:5432         | postgres:17-alpine        |
+| postgres  | 127.0.0.1:5432         | postgres:17.11-alpine     |
 | api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
 | back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
@@ -118,11 +122,15 @@ The debug ports (api/back/landing/postgres) are bound to loopback — see the ru
 All services use `restart: unless-stopped` and Docker is enabled at boot
 (`systemctl is-enabled docker`): a reboot brings everything back up.
 
-## Postgres backup
+## Backups
 
-TODO — scheduled dump (`pg_dump` via `docker compose exec postgres`), retention, off-machine copy.
+Postgres, `data/uploads` and `.env` are backed up with restic every 6 hours and before
+every deploy, copied to the Synology NAS, and restored into a throwaway Postgres every
+week to prove the backups work (Healthchecks.io alerts on a failure or a missing run).
+Setup, restore procedures and disaster recovery: [docs/backup.md](docs/backup.md).
 
 ## See also
 
 - [docs/runbook.md](docs/runbook.md) — operating procedures
+- [docs/backup.md](docs/backup.md) — backup, restore, disaster recovery
 - [docs/release-process.md](docs/release-process.md) — CI, release & deploy
