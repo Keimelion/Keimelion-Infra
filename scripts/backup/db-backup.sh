@@ -3,16 +3,25 @@
 # per-table row counts (taken in the dump's own snapshot, checked by backup-verify.sh),
 # data/uploads and .env. Then applies retention and copies the snapshot off-site.
 #
-#   scripts/backup/db-backup.sh [scheduled|pre-deploy|pre-restore|manual]   (default: manual)
+#   scripts/backup/db-backup.sh [scheduled|pre-deploy[-<name>]|pre-restore|manual]   (default: manual)
+#
+# pre-deploy-<name> (e.g. pre-deploy-api, taken by deploy.yml) is tagged pre-deploy + <name>
+# and records its snapshot ID in $BACKUP_ROOT/last-pre-deploy-<name>: that exact snapshot
+# is what `db-restore.sh --last pre-deploy-<name>` restores when a deploy is rolled back.
 #
 # "scheduled" runs from keimelion-db-backup.timer and pings HC_BACKUP_URL; an off-site
 # failure fails the run. For the other tags the off-site copy is best effort: a deploy
 # must not be blocked by the NAS being down, the local snapshot is what a rollback needs.
 SCRIPT_NAME=db-backup
 TAG=${1:-manual}
+LABEL=""
 case "$TAG" in
   scheduled | pre-deploy | pre-restore | manual) ;;
-  *) echo "usage: $0 [scheduled|pre-deploy|pre-restore|manual]" >&2; exit 2 ;;
+  pre-deploy-*)
+    LABEL=${TAG#pre-deploy-}
+    TAG=pre-deploy
+    [[ "$LABEL" =~ ^[a-z0-9]+$ ]] || { echo "invalid label '$LABEL'" >&2; exit 2; } ;;
+  *) echo "usage: $0 [scheduled|pre-deploy[-<name>]|pre-restore|manual]" >&2; exit 2 ;;
 esac
 
 # shellcheck source=scripts/backup/lib.sh
@@ -95,7 +104,15 @@ log "dump OK: $(grep -E '^(dump_bytes|tables|uploads_files)=' "$STAGING/manifest
 # --- 2. Local snapshot + retention --------------------------------------------------------
 paths=("$STAGING" "$ENV_FILE")
 [ -d "$UPLOADS_DIR" ] && paths+=("$UPLOADS_DIR")
-restic_local backup --quiet --host keimelion --tag "$TAG" "${paths[@]}"
+tags=(--tag "$TAG")
+[ -n "$LABEL" ] && tags+=(--tag "$LABEL")
+snapshot_id=$(restic_local backup --json --quiet --host keimelion "${tags[@]}" "${paths[@]}" |
+  sed -n 's/.*"message_type":"summary".*"snapshot_id":"\([0-9a-f]*\)".*/\1/p')
+[ -n "$snapshot_id" ] || die "restic backup did not report a snapshot ID"
+log "snapshot ${snapshot_id:0:8}"
+if [ -n "$LABEL" ]; then
+  echo "$snapshot_id $(date +%s)" >"$BACKUP_ROOT/last-pre-deploy-$LABEL"
+fi
 
 read -ra retention <<<"$(env_get BACKUP_RETENTION '--keep-last 4 --keep-daily 14 --keep-weekly 8 --keep-monthly 12')"
 restic_local forget --quiet --host keimelion --group-by host,tags "${retention[@]}" --prune

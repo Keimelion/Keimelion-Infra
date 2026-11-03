@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Restores a restic snapshot into PRODUCTION. Procedure and rollback: docs/backup.md.
 #
-#   scripts/backup/db-restore.sh [--from local|offsite] [--snapshot ID] [--with-uploads]
-#                                [--skip-safety-backup] [--yes]
+#   scripts/backup/db-restore.sh [--from local|offsite] [--snapshot ID | --last pre-deploy-<name>]
+#                                [--with-uploads] [--skip-safety-backup] [--yes]
 #
 #   1. restores the snapshot (default: latest) to a work dir and checks the dump checksum
 #   2. takes a "pre-restore" backup of the current state (unless --skip-safety-backup)
@@ -10,11 +10,15 @@
 #   4. stops the API, swaps the databases by renaming (<db> -> <db>_pre_restore_<ts>,
 #      <db>_restore -> <db>), restarts the API (which applies newer migrations) and waits
 #      for /health. The previous database is kept until dropped by hand.
+#   --last pre-deploy-<name>  the snapshot recorded by `db-backup.sh pre-deploy-<name>`
+#                   (deploy rollback, run by keimelion-db-restore@.service); refused when
+#                   older than BACKUP_LAST_MAX_AGE_MINUTES (60): it must be this deploy's
 #   --with-uploads  also copies the snapshot's uploads missing from data/uploads (never
 #                   overwrites nor deletes a file)
 SCRIPT_NAME=db-restore
 FROM=local
 SNAPSHOT=latest
+LAST=""
 WITH_UPLOADS=false
 SAFETY_BACKUP=true
 ASSUME_YES=false
@@ -22,16 +26,28 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --from) FROM=$2; shift 2 ;;
     --snapshot) SNAPSHOT=$2; shift 2 ;;
+    --last) LAST=$2; shift 2 ;;
     --with-uploads) WITH_UPLOADS=true; shift ;;
     --skip-safety-backup) SAFETY_BACKUP=false; shift ;;
     --yes) ASSUME_YES=true; shift ;;
-    -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 
 # shellcheck source=scripts/backup/lib.sh
 . "$(dirname "$0")/lib.sh"
+
+if [ -n "$LAST" ]; then
+  [[ "$LAST" =~ ^pre-deploy-[a-z0-9]+$ ]] || die "invalid --last '$LAST'"
+  read -r SNAPSHOT recorded_at <"$BACKUP_ROOT/last-$LAST" || die "no snapshot recorded for $LAST"
+  [[ "$SNAPSHOT" =~ ^[0-9a-f]{64}$ ]] || die "invalid snapshot ID in $BACKUP_ROOT/last-$LAST"
+  age_minutes=$((($(date +%s) - recorded_at) / 60))
+  [ "$age_minutes" -le "$(env_get BACKUP_LAST_MAX_AGE_MINUTES 60)" ] ||
+    die "$LAST snapshot is ${age_minutes} min old: not this deploy's, refusing (use --snapshot)"
+  FROM=local
+  log "$LAST snapshot ${SNAPSHOT:0:8}, taken ${age_minutes} min ago"
+fi
 
 DB=$POSTGRES_DB
 RESTORE_DB="${DB}_restore"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-time system setup of the backups (root): restic package, backup directory, systemd
-# units + timers, and the sudoers rule letting the GitHub runner take the pre-deploy backup.
+# units + timers, and the sudoers rule letting the GitHub runner take the pre-deploy backups
+# and restore the API's one on a rollback.
 # Idempotent: rerun it after changing systemd/ (units are copied, not linked, so a commit
 # cannot change what root runs without this script).
 #
@@ -27,10 +28,13 @@ for unit in "$INFRA_DIR"/systemd/*.service "$INFRA_DIR"/systemd/*.timer; do
   chmod 0644 "/etc/systemd/system/$(basename "$unit")"
 done
 
-# The deploy workflow runs `sudo -n systemctl start --wait keimelion-db-backup@pre-deploy.service`.
+# Exact commands only (no wildcard: `systemctl start` accepts several units). Used by
+# deploy-infra.yml (@pre-deploy) and deploy.yml (@pre-deploy-api, restore on rollback).
 if id "$RUNNER_USER" >/dev/null 2>&1; then
   sudoers=$(mktemp)
-  echo "$RUNNER_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start --wait keimelion-db-backup@pre-deploy.service" >"$sudoers"
+  for unit in keimelion-db-backup@pre-deploy keimelion-db-backup@pre-deploy-api keimelion-db-restore@pre-deploy-api; do
+    echo "$RUNNER_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start --wait $unit.service"
+  done >"$sudoers"
   visudo -cqf "$sudoers"
   install -m 0440 "$sudoers" /etc/sudoers.d/keimelion-backup
   rm -f "$sudoers"
