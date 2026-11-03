@@ -34,7 +34,8 @@ address (TLS was terminated upstream).
 ## Deploy a new version
 
 Automatic: merging a release PR into `main` runs CI → semantic-release → deploy
-(health check + rollback). See [release-process.md](release-process.md).
+(health check + rollback, see "Deploy, migrations & rollback" below). See
+[release-process.md](release-process.md).
 Manual redeploy of `main`: run the repo's `Deploy` workflow from GitHub.
 
 Fallback without CI (runner down):
@@ -61,16 +62,44 @@ docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 The whole `caddy/` folder is bind-mounted (not just the file), so edits land
 in the container through the host, and `caddy reload` picks them up.
 
-## Database migrations
+## Deploy, migrations & rollback
 
-Drizzle migrations (`Keimelion-API/src/db/migrations`) are applied by the API container on
-start (`npm run db:migrate` before `node dist/index.js`): deploying the API **is** migrating
-the database. The API deploy therefore takes a `pre-deploy` restic snapshot first and aborts
-if it fails. A failed health check rolls the code back, not the schema: a migration that
-must be undone is undone by restoring that snapshot ([backup.md](backup.md), scenario A).
+`deploy.yml` (steps in `scripts/deploy/app-deploy.sh`). For the API:
 
-Write migrations that the previous release can still run against (add, then drop in a
-later release), so that a code rollback alone stays possible.
+1. **Pull & build** — the running image is tagged `keimelion-api:previous` first (instant
+   rollback, no rebuild), then the new one is built. The old container keeps serving.
+2. **Pre-deploy backup** — `keimelion-db-backup@pre-deploy-api`: restic snapshot, its ID
+   recorded in `/var/backups/keimelion/last-pre-deploy-api`. No snapshot, no deploy.
+3. **Migrate** — `docker compose run --rm api npm run db:migrate` with the **new** image,
+   **while the old API still serves**. Drizzle applies all pending migrations in one
+   transaction: a failing migration leaves the schema untouched.
+4. **Deploy** — `up -d api` (its own `db:migrate` on start is a no-op).
+5. **Health check** — `/health` (waited for, ~90 s), then smoke tests reading real tables
+   (`/v1/categories`, `/v1/occasion-types`): `/health` alone only runs `SELECT 1`.
+6. **Rollback on failure** — previous commit + `:previous` image, health + smoke tests
+   again. If the previous release is unhealthy **and** this deploy migrated the schema:
+   `keimelion-db-restore@pre-deploy-api` restores the step-2 snapshot (after a
+   `pre-restore` snapshot of the broken state), then checks again.
+
+| What goes wrong | Outcome | Downtime |
+|---|---|---|
+| A migration fails | job red with the SQL error, schema unchanged, old API never stopped | none |
+| Migrations OK, new release fails health/smoke | previous image back, schema kept (backward compatible) | until the health check gives up (~90 s) + a few s |
+| …and the previous release fails on the new schema | + restore of the pre-deploy snapshot | + ~10 s; **writes since the snapshot are lost** (the API was broken meanwhile) |
+| Still unhealthy after all that | job red "manual intervention needed" | until fixed |
+
+All three were rehearsed with trap migrations on a throwaway compose project (PR #15).
+After an automatic restore, the broken state is kept twice for the post-mortem:
+`pre-restore` snapshot and database `keimelion_pre_restore_<ts>` (drop it once analysed).
+
+**Rule for migrations: the previous release must still work on the new schema**
+(expand/contract). Add a column/table in release N, start using it, drop the old one in
+N+1; never rename in place. With it, a rollback never needs the restore. The restore is
+the safety net when the rule is broken. Statements that cannot run in a transaction
+(`CREATE INDEX CONCURRENTLY`…) are not supported by this flow.
+
+The smoke tests only see what those endpoints read. A release broken on another table is
+caught by the next layers only (Kuma, users).
 
 ## Seeding the database
 

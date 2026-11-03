@@ -30,8 +30,8 @@ works.
 | `…/Keimelion-Infra/data/uploads/` | uploaded images |
 | `…/Keimelion-Infra/.env` | server secrets (needed to rebuild the server; the repository is encrypted) |
 
-Snapshots are tagged with why they were taken: `scheduled`, `pre-deploy`, `pre-restore`,
-`manual`. Retention (`BACKUP_RETENTION`) applies per tag: by default the last 4, then one
+Snapshots are tagged with why they were taken: `scheduled`, `pre-deploy` (+ `api` for the
+API deploy's), `pre-restore`, `manual`. Retention (`BACKUP_RETENTION`) applies per tag: by default the last 4, then one
 per day for 14 days, per week for 8 weeks, per month for 12 months.
 
 ## Jobs
@@ -39,7 +39,9 @@ per day for 14 days, per week for 8 weeks, per month for 12 months.
 | systemd unit | When | Script | Monitoring |
 |---|---|---|---|
 | `keimelion-db-backup.timer` → `keimelion-db-backup@scheduled` | 00:15, 06:15, 12:15, 18:15 (± 5 min, caught up at boot) | `db-backup.sh scheduled` | `HC_BACKUP_URL` |
-| `keimelion-db-backup@pre-deploy` | `deploy.yml` (API) and `deploy-infra.yml`, before `up -d` | `db-backup.sh pre-deploy` | — (fails the deploy) |
+| `keimelion-db-backup@pre-deploy-api` | `deploy.yml` (API), before the migrations; ID recorded for the rollback | `db-backup.sh pre-deploy-api` | — (fails the deploy) |
+| `keimelion-db-backup@pre-deploy` | `deploy-infra.yml`, before `up -d` | `db-backup.sh pre-deploy` | — (fails the deploy) |
+| `keimelion-db-restore@pre-deploy-api` | `deploy.yml` rollback, only if the previous release fails on the migrated schema | `db-restore.sh --last pre-deploy-api --yes` | — (job annotations) |
 | `keimelion-backup-verify.timer` | Sundays 04:45 | `backup-verify.sh` | `HC_VERIFY_URL` |
 
 `db-backup.sh` fails the scheduled run if the off-site copy fails; for `pre-deploy` the

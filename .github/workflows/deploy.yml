@@ -1,8 +1,13 @@
 name: deploy
 
 # Reusable deploy of the calling repo's compose service on milky-way (self-hosted
-# runner), with health check and automatic rollback to the previously deployed commit.
-# The repo → service mapping lives here, next to docker-compose.yml.
+# runner). The repo → service mapping lives here, next to docker-compose.yml; the steps
+# are scripts/deploy/app-deploy.sh (rehearsable outside CI). For the API:
+#   snapshot → migrations with the new image while the current API serves (a failure
+#   changes nothing, the schema is transactional) → swap → health + smoke tests →
+#   on failure: previous image back instantly, checked; if it is unhealthy on a schema
+#   this deploy migrated, the pre-deploy snapshot is restored. docs/runbook.md
+#   "Deploy, migrations & rollback".
 
 on:
   workflow_call:
@@ -21,17 +26,22 @@ jobs:
     env:
       REPO_DIR: ${{ github.event.repository.name }}
       BRANCH: main
+      DEPLOY: keimelion/Keimelion-Infra/scripts/deploy/app-deploy.sh
     steps:
       - name: Resolve service
         run: |
+          # First URL: health endpoint (waited for); the others: smoke tests reading real
+          # tables, so that a release unable to run on the schema is caught (/health only
+          # runs SELECT 1).
+          API=https://api.keimelion.zalbani.dev
           case "$REPO_DIR" in
-            Keimelion-API)        SERVICE=api;     HEALTH_URL=https://api.keimelion.zalbani.dev/health ;;
-            Keimelion-Backoffice) SERVICE=back;    HEALTH_URL=https://admin.keimelion.zalbani.dev/ ;;
-            Keimelion-Landing)    SERVICE=landing; HEALTH_URL=https://keimelion.zalbani.dev/ ;;
+            Keimelion-API)        SERVICE=api;     URLS="$API/health $API/v1/categories $API/v1/occasion-types" ;;
+            Keimelion-Backoffice) SERVICE=back;    URLS=https://admin.keimelion.zalbani.dev/ ;;
+            Keimelion-Landing)    SERVICE=landing; URLS=https://keimelion.zalbani.dev/ ;;
             *) echo "::error::No compose service mapped for $REPO_DIR"; exit 1 ;;
           esac
           echo "SERVICE=$SERVICE" >> "$GITHUB_ENV"
-          echo "HEALTH_URL=$HEALTH_URL" >> "$GITHUB_ENV"
+          echo "HEALTH_URLS=$URLS" >> "$GITHUB_ENV"
 
       - name: Detect new version
         id: version
@@ -55,22 +65,28 @@ jobs:
       - name: Pull & build
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
+          ~/"$DEPLOY" save-image "$SERVICE"
           cd ~/keimelion/"$REPO_DIR"
           git reset --hard "${{ steps.version.outputs.next }}"
           cd ~/keimelion/Keimelion-Infra
           docker compose build "$SERVICE"
 
-      # The API applies its Drizzle migrations on start: never migrate without a fresh
-      # snapshot to roll back to (docs/backup.md). Runs as the backup user via systemd,
-      # allowed by /etc/sudoers.d/keimelion-backup (scripts/backup/install.sh).
+      # Never migrate without a fresh snapshot to come back to. Runs as the backup user via
+      # systemd, allowed by /etc/sudoers.d/keimelion-backup (scripts/backup/install.sh); the
+      # snapshot ID is recorded for the rollback (keimelion-db-restore@pre-deploy-api).
       - name: Pre-deploy backup
         if: steps.version.outputs.prev != steps.version.outputs.next && env.SERVICE == 'api'
         run: |
-          if ! sudo -n systemctl start --wait keimelion-db-backup@pre-deploy.service; then
-            journalctl -u keimelion-db-backup@pre-deploy.service -n 40 --no-pager || true
-            echo "::error::Pre-deploy backup failed, deploy aborted (nothing changed yet)"
+          if ! sudo -n systemctl start --wait keimelion-db-backup@pre-deploy-api.service; then
+            journalctl -u keimelion-db-backup@pre-deploy-api.service -n 40 --no-pager || true
+            echo "::error::Pre-deploy backup failed, deploy aborted (nothing changed yet; sudo scripts/backup/install.sh if the sudoers rule is missing)"
             exit 1
           fi
+
+      - name: Migrate
+        id: migrate
+        if: steps.version.outputs.prev != steps.version.outputs.next && env.SERVICE == 'api'
+        run: ~/"$DEPLOY" migrate
 
       - name: Deploy
         if: steps.version.outputs.prev != steps.version.outputs.next
@@ -81,22 +97,15 @@ jobs:
       - name: Health check
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
-          sleep 5
-          for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; then
-              echo "::notice::Health check passed on attempt $i ($HEALTH_URL)"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo "::error::Health check failed after 30 attempts on $HEALTH_URL"
-          exit 1
+          # shellcheck disable=SC2086 # HEALTH_URLS is a space-separated list
+          ~/"$DEPLOY" check $HEALTH_URLS
 
       - name: Rollback on failure
-        if: failure() && steps.version.outputs.prev != steps.version.outputs.next
+        if: failure() && steps.version.outputs.prev != '' && steps.version.outputs.prev != steps.version.outputs.next
+        env:
+          SCHEMA_CHANGED: ${{ steps.migrate.outputs.schema_changed }}
         run: |
           echo "::warning::Rolling $REPO_DIR back to ${{ steps.version.outputs.prev }}"
-          cd ~/keimelion/"$REPO_DIR"
-          git reset --hard "${{ steps.version.outputs.prev }}"
-          cd ~/keimelion/Keimelion-Infra
-          docker compose up -d --build "$SERVICE"
+          git -C ~/keimelion/"$REPO_DIR" reset --hard "${{ steps.version.outputs.prev }}"
+          # shellcheck disable=SC2086
+          ~/"$DEPLOY" rollback "$SERVICE" $HEALTH_URLS
