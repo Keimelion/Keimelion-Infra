@@ -191,6 +191,6 @@ Needs: the NAS and the restic password (password manager).
   B2…) — the restic data is already encrypted, the cloud never sees plaintext.
 - **RPO 6 h**: enough at this scale. Below that, move to continuous WAL archiving
   (pgBackRest / WAL-G, point-in-time recovery).
-- **Data checksums are off** in the current cluster (`SHOW data_checksums`): silent disk
-  corruption would only be detected when read. They can be enabled offline
-  (`pg_checksums --enable`, API stopped, a few seconds at this size).
+- **Data checksums** are on since the Postgres 18 cluster (default of `initdb` in 18): a
+  corrupted page fails the read instead of returning wrong data, and the weekly restore
+  test reads every row.
