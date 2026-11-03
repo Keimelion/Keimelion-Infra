@@ -126,7 +126,7 @@ All services use `restart: unless-stopped` and Docker is enabled at boot
 
 Postgres, `data/uploads` and `.env` are backed up with restic every 6 hours and before
 every deploy, copied to the Synology NAS, and restored into a throwaway Postgres every
-week to prove the backups work (Healthchecks.io alerts on a failure or a missing run).
+week to prove the backups work (Uptime Kuma push monitors alert on a failure or a missing run).
 Setup, restore procedures and disaster recovery: [docs/backup.md](docs/backup.md).
 
 ## See also
