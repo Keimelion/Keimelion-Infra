@@ -2,7 +2,7 @@
 # Creates or updates (matched by name) the branch rulesets of github/rulesets/<kind>/*.json
 # on the Keimelion repos. Needs a gh token with admin rights on the repos.
 #
-#   apps/         Keimelion-API, Keimelion-Backoffice, Keimelion-Landing
+#   apps/         Keimelion-API, Keimelion-Backoffice, Keimelion-Landing, Keimelion-SDK
 #   infra/        Keimelion-Infra
 #   collections/  Keimelion-API-collections
 #
@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 OWNER=Keimelion
 REPOS=("$@")
 if [ ${#REPOS[@]} -eq 0 ]; then
-  REPOS=(Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Infra Keimelion-API-collections)
+  REPOS=(Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-SDK Keimelion-Infra Keimelion-API-collections)
 fi
 
 for repo in "${REPOS[@]}"; do

@@ -1,13 +1,16 @@
 # CI, release & deploy
 
-One process, identical for the three app repos (API, Back-office, Landing).
+One process, identical for the three app repos (API, Back-office, Landing) and the
+npm package repo (Keimelion-SDK, `@keimelion/sdk`).
 The logic lives in the **reusable workflows** of this repo; each app repo holds the
-same thin callers, **byte-for-byte identical** (no inputs):
+same thin callers, **byte-for-byte identical** (no inputs). The only difference of the
+SDK is the last job of its `release.yml`: `npm-publish.yml` instead of `deploy.yml`
+(see [npm package](#npm-package-keimelion-sdk)).
 
 | In each app repo | Calls (here) | Role |
 |---|---|---|
 | `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors left for review) |
-| `release.yml` (push main) | `node-ci.yml` → `release.yml` → `deploy.yml` | semantic-release, fast-forward `dev` onto `main`, deploy if a tag was created |
+| `release.yml` (push main) | `node-ci.yml` → `release.yml` → `deploy.yml` (SDK: `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main`, deploy (SDK: publish to npmjs) if a tag was created |
 | `deploy.yml` (manual) | `deploy.yml` | redeploy `main` |
 | `codeql.yml` | `codeql.yml` | CodeQL `security-and-quality` |
 
@@ -69,6 +72,37 @@ GitHub Releases are created without commenting the released PRs/issues
 - To ship a dependency bump or refactor anyway, title it `fix:` (or merge it with a
   `fix`/`feat` in the same release).
 
+## npm package (Keimelion-SDK)
+
+`@keimelion/sdk` is the single source of truth of the API contract (schemas, enums,
+error codes, HTTP client), published **publicly** on npmjs. Same flow as the apps
+(`dev` → release PR → `main` → semantic-release, 0.x rules above), then:
+
+```
+ main ─ push ─▶ release.yml:  ci ──▶ release ──▶ npm-publish (only if a tag was created)
+                                                   checkout vX.Y.Z, npm ci, build,
+                                                   publint + attw,
+                                                   npm publish --provenance --access public
+```
+
+- `npm-publish.yml` is a **job of the same run** (`needs: release`,
+  `if: needs.release.outputs.published == 'true'`, `with: version`), not a workflow on
+  tag push: a tag pushed with `GITHUB_TOKEN` never triggers another workflow.
+- `@semantic-release/npm` keeps `npmPublish: false` (it only bumps `package.json`);
+  publishing happens in `npm-publish.yml`, the **only** job with publish rights
+  (`id-token: write`). It skips a version already on npmjs, so a re-run is harmless.
+- Auth: **npm Trusted Publishing** (OIDC, no long-lived token). The very first version
+  can be published before a trusted publisher is attached to the package only with a
+  token: a short-lived granular automation token as the `NPM_TOKEN` secret of the SDK
+  repo **only**, then switch to OIDC and revoke the token (see one-time setup).
+- The first release is `0.1.0`: the bootstrap commit of the SDK repo is tagged `v0.0.0`,
+  so the first `feat:` on `main` bumps to `0.1.0` (without a tag semantic-release starts
+  at `1.0.0`).
+- Consumers need **no registry auth** (no `.npmrc` token, no Docker build secret, no
+  Dependabot registry, no `packages: read`).
+- **SDK first, then the API**: a change of an API request/response shape is released in
+  the SDK first; the API PR then bumps `@keimelion/sdk`.
+
 ## Releasing
 
 1. Open a PR `dev → main` titled `chore: release`, wait for CI.
@@ -84,15 +118,22 @@ Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *
   could otherwise add a job `runs-on: [self-hosted, keimelion]` and run code on
   milky-way. If the plan allows runner groups, restrict the `keimelion` runner to
   the `Keimelion-Infra/.github/workflows/deploy.yml` workflow.
-- **Branches & merge methods** (all three app repos): default branch `dev`; allow
+- **Branches & merge methods** (all three app repos and the SDK): default branch `dev`; allow
   *squash* (feature PRs) **and** *merge commits* (release PRs).
 - **Release GitHub App** `keimelion-release` (owned by the org, installed on the three
-  app repos): *Contents*, *Issues*, *Pull requests* read & write. Its credentials are the
+  app repos and the SDK): *Contents*, *Issues*, *Pull requests* read & write. Its credentials are the
   org secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`; without them the release
   falls back to `GITHUB_TOKEN` (which cannot bypass rulesets).
+- **npm** (SDK): org `keimelion` on npmjs owning the `@keimelion` scope (2FA enforced).
+  First publish: either a trusted publisher can be added before the package exists, or
+  bootstrap `0.1.0` with a granular automation token (`@keimelion/sdk` read & write, short
+  expiry) as the `NPM_TOKEN` secret of Keimelion-SDK. Then on npmjs *@keimelion/sdk →
+  Settings → Trusted Publisher*: GitHub Actions, `Keimelion/Keimelion-SDK`, workflow
+  `release.yml`; set *Publishing access* to "Require two-factor authentication and
+  disallow tokens", delete the `NPM_TOKEN` secret and revoke the token.
 - **Rulesets** are versioned in `github/rulesets/<kind>/` and applied with
   `scripts/apply-rulesets.sh [repo...]` (create or update by name; needs repo admin):
-  - `apps/` (API, Back-office, Landing) — `main`: PR required, **merge commit only**
+  - `apps/` (API, Back-office, Landing, SDK) — `main`: PR required, **merge commit only**
     (release PRs); `dev`: **squash only** (feature PRs); both require
     the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
     + tag on `main`, fast-forward of `dev`, or merge of `main` into `dev` if it moved)
