@@ -84,15 +84,11 @@ jobs:
         if: steps.published.outputs.already == 'false'
         run: npm ci
 
+      # The package's own build owns its packaging checks (publint, attw with the profile
+      # matching its module format): an ESM-only package fails attw's node16 CJS checks.
       - name: Build
         if: steps.published.outputs.already == 'false'
         run: npm run build
-
-      - name: Lint package (publint, attw)
-        if: steps.published.outputs.already == 'false'
-        run: |
-          npx --yes publint@^0.3 --strict
-          npx --yes @arethetypeswrong/cli@^0.18 --pack . --profile node16
 
       - name: Publish
         if: steps.published.outputs.already == 'false'
