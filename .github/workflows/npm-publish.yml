@@ -1,0 +1,101 @@
+name: npm-publish
+
+# Reusable publish of the calling repo's package to npmjs, run by its release.yml once
+# release.yml (semantic-release) tagged a version:
+#   npm-publish:
+#     needs: release
+#     if: needs.release.outputs.published == 'true'
+#     permissions: { contents: read, id-token: write }
+#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish.yml@main
+#     with: { version: "${{ needs.release.outputs.version }}" }
+#     secrets: inherit
+#
+# A job of the same run, not an `on: push: tags` workflow: the tag is pushed with the
+# release token, and a push made with GITHUB_TOKEN never triggers another workflow.
+#
+# Publishes from the release tag (package.json carries the released version), with npm
+# provenance. Auth: npm Trusted Publishing (OIDC, no long-lived token) once configured on
+# npmjs; NPM_TOKEN (granular automation token, secret of the calling repo only) is a
+# one-off bootstrap for the very first version, before a trusted publisher can be
+# attached to the package — revoke it afterwards. This job is the only place holding
+# publish rights (id-token: write); consumers need no registry auth (public package).
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version tagged by release.yml (without the leading v)
+        required: true
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: npm-publish-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Check version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "::error::package.json is $PACKAGE_VERSION on tag v$VERSION"
+            exit 1
+          fi
+
+      # Re-running a release must not fail on an already published version.
+      - name: Skip if already published
+        id: published
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION is already on npmjs, nothing to publish"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.published.outputs.already == 'false'
+        run: npm ci
+
+      - name: Build
+        if: steps.published.outputs.already == 'false'
+        run: npm run build
+
+      - name: Lint package (publint, attw)
+        if: steps.published.outputs.already == 'false'
+        run: |
+          npx --yes publint@^0.3 --strict
+          npx --yes @arethetypeswrong/cli@^0.18 --pack . --profile node16
+
+      - name: Publish
+        if: steps.published.outputs.already == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
