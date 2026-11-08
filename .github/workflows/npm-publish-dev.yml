@@ -6,7 +6,7 @@ name: npm-publish-dev
 #     needs: ci
 #     if: github.ref == 'refs/heads/dev'
 #     permissions: { contents: read, id-token: write }
-#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish-dev.yml@main
+#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish-dev.yml@vX.Y.Z
 #
 # The job must stay in the caller's release.yml: npm Trusted Publishing is bound to that
 # workflow filename, a separate caller file would be refused.
