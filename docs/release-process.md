@@ -83,14 +83,24 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
                                                    checkout vX.Y.Z, npm ci, build,
                                                    publint + attw,
                                                    npm publish --provenance --access public
+ dev ── push ─▶ release.yml:  ci ──▶ publish-dev
+                                       npm ci, version X.Y.(Z+1)-dev.<run number>, build,
+                                       npm publish --provenance --access public --tag dev
 ```
 
 - `npm-publish.yml` is a **job of the same run** (`needs: release`,
   `if: needs.release.outputs.published == 'true'`, `with: version`), not a workflow on
   tag push: a tag pushed with `GITHUB_TOKEN` never triggers another workflow.
 - `@semantic-release/npm` keeps `npmPublish: false` (it only bumps `package.json`);
-  publishing happens in `npm-publish.yml`, the **only** job with publish rights
-  (`id-token: write`). It skips a version already on npmjs, so a re-run is harmless.
+  publishing happens in `npm-publish.yml` and `npm-publish-dev.yml`, the **only** jobs with
+  publish rights (`id-token: write`). They skip a version already on npmjs, so a re-run is
+  harmless.
+- `npm-publish-dev.yml` publishes every push to `dev` on the `dev` dist-tag, so `latest` stays
+  on the stable release. The version only exists in the runner (no commit, no tag). To test an
+  unreleased contract: `npm install @keimelion/sdk@dev --save-exact`; a caret range never
+  matches a prerelease. Go back to the stable version before releasing the consumer.
+- Its job lives in the SDK's `release.yml`, next to `npm-publish`: the trusted publisher is
+  bound to that filename, a separate caller workflow would be refused by npm.
 - Auth: **npm Trusted Publishing** (OIDC, no long-lived token). The very first version
   can be published before a trusted publisher is attached to the package only with a
   token: a short-lived granular automation token as the `NPM_TOKEN` secret of the SDK
