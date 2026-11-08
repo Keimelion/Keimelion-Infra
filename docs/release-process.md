@@ -84,7 +84,7 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
                                                    publint + attw,
                                                    npm publish --provenance --access public
  dev ── push ─▶ release.yml:  ci ──▶ publish-dev
-                                       npm ci, version X.Y.(Z+1)-dev.<run number>, build,
+                                       npm ci, version <next release>-dev.<N>, build,
                                        npm publish --provenance --access public --tag dev
 ```
 
@@ -93,10 +93,13 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
   tag push: a tag pushed with `GITHUB_TOKEN` never triggers another workflow.
 - `@semantic-release/npm` keeps `npmPublish: false` (it only bumps `package.json`);
   publishing happens in `npm-publish.yml` and `npm-publish-dev.yml`, the **only** jobs with
-  publish rights (`id-token: write`). They skip a version already on npmjs, so a re-run is
-  harmless.
+  publish rights (`id-token: write`). They skip what is already on npmjs, so a re-run is
+  harmless: `npm-publish-dev.yml` recognizes a commit already published through `gitHead`.
 - `npm-publish-dev.yml` publishes every push to `dev` on the `dev` dist-tag, so `latest` stays
-  on the stable release. The version only exists in the runner (no commit, no tag). To test an
+  on the stable release. The base is the next release given the commits since the last stable
+  tag (0.x table above, a `chore`/`ci`-only range counts as patch), and `N` restarts at 1 for
+  each new base: `0.1.1-dev.1`, `0.1.1-dev.2`, then a `feat` gives `0.2.0-dev.1`. The version
+  only exists in the runner (no commit, no tag). To test an
   unreleased contract: `npm install @keimelion/sdk@dev --save-exact`; a caret range never
   matches a prerelease. Go back to the stable version before releasing the consumer.
 - Its job lives in the SDK's `release.yml`, next to `npm-publish`: the trusted publisher is

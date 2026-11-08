@@ -11,9 +11,11 @@ name: npm-publish-dev
 # The job must stay in the caller's release.yml: npm Trusted Publishing is bound to that
 # workflow filename, a separate caller file would be refused.
 #
-# Version: next patch of package.json + `-dev.<run number>` (0.1.0 → 0.1.1-dev.42). It is
-# set in the runner only, nothing is committed or tagged. The `dev` dist-tag keeps `latest`
-# on the stable release; consumers opt in with `npm install <package>@dev --save-exact`.
+# Version: <next release>-dev.<N>. The next release follows the commits since the last stable
+# tag with the 0.x rules of release-process.md (feat or breaking: minor, anything else: patch);
+# N restarts at 1 for each new base. It is set in the runner only, nothing is committed or
+# tagged. The `dev` dist-tag keeps `latest` on the stable release; consumers opt in with
+# `npm install <package>@dev --save-exact`.
 
 on:
   workflow_call:
@@ -35,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -43,40 +47,51 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # npm records the source commit as gitHead: a re-run of a published commit stops here,
+      # without a new number or a second publish.
       - name: Compute version
         id: version
         run: |
-          IFS=. read -r MAJOR MINOR PATCH < <(node -p "require('./package.json').version")
-          echo "value=$MAJOR.$MINOR.$((PATCH + 1))-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-
-      # Re-running a run keeps its run number: it must not fail on an already published version.
-      - name: Skip if already published
-        id: published
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
           NAME=$(node -p "require('./package.json').name")
-          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+          PACKUMENT="$RUNNER_TEMP/packument.json"
+          curl -fsSL "https://registry.npmjs.org/${NAME/\//%2f}" -o "$PACKUMENT"
+
+          PUBLISHED=$(jq -r --arg sha "$GITHUB_SHA" '.versions | to_entries[]
+            | select(.value.gitHead == $sha and (.key | contains("-dev."))) | .key' "$PACKUMENT")
+          if [ -n "$PUBLISHED" ]; then
             echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::$NAME@$VERSION is already on npmjs, nothing to publish"
-          else
-            echo "already=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$PUBLISHED was already published from this commit, nothing to publish"
+            exit 0
           fi
 
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*.*.*')
+          IFS=. read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
+          if git log --format=%s "$LAST_TAG..HEAD" | grep -qE '^(feat(\(.+\))?!?|[a-z]+(\(.+\))?!):' \
+            || git log --format=%B "$LAST_TAG..HEAD" | grep -qE '^BREAKING[ -]CHANGE:'; then
+            BASE="$MAJOR.$((MINOR + 1)).0"
+          else
+            BASE="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+
+          LAST_N=$(jq -r --arg prefix "$BASE-dev." '[.versions | keys[]
+            | select(startswith($prefix)) | ltrimstr($prefix) | tonumber] | max // 0' "$PACKUMENT")
+          echo "already=false" >> "$GITHUB_OUTPUT"
+          echo "value=$BASE-dev.$((LAST_N + 1))" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
-        if: steps.published.outputs.already == 'false'
+        if: steps.version.outputs.already == 'false'
         run: npm ci
 
       - name: Set version
-        if: steps.published.outputs.already == 'false'
+        if: steps.version.outputs.already == 'false'
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: npm version "$VERSION" --no-git-tag-version
 
       - name: Build
-        if: steps.published.outputs.already == 'false'
+        if: steps.version.outputs.already == 'false'
         run: npm run build
 
       - name: Publish
-        if: steps.published.outputs.already == 'false'
+        if: steps.version.outputs.already == 'false'
         run: npm publish --provenance --access public --tag dev
