@@ -1,0 +1,82 @@
+name: npm-publish-dev
+
+# Reusable publish of a prerelease of the calling repo's package to npmjs on the `dev`
+# dist-tag, run by its release.yml on every push to `dev`:
+#   publish-dev:
+#     needs: ci
+#     if: github.ref == 'refs/heads/dev'
+#     permissions: { contents: read, id-token: write }
+#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish-dev.yml@main
+#
+# The job must stay in the caller's release.yml: npm Trusted Publishing is bound to that
+# workflow filename, a separate caller file would be refused.
+#
+# Version: next patch of package.json + `-dev.<run number>` (0.1.0 → 0.1.1-dev.42). It is
+# set in the runner only, nothing is committed or tagged. The `dev` dist-tag keeps `latest`
+# on the stable release; consumers opt in with `npm install <package>@dev --save-exact`.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: npm publish (dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: npm-publish-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Compute version
+        id: version
+        run: |
+          IFS=. read -r MAJOR MINOR PATCH < <(node -p "require('./package.json').version")
+          echo "value=$MAJOR.$MINOR.$((PATCH + 1))-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      # Re-running a run keeps its run number: it must not fail on an already published version.
+      - name: Skip if already published
+        id: published
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION is already on npmjs, nothing to publish"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.published.outputs.already == 'false'
+        run: npm ci
+
+      - name: Set version
+        if: steps.published.outputs.already == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: npm version "$VERSION" --no-git-tag-version
+
+      - name: Build
+        if: steps.published.outputs.already == 'false'
+        run: npm run build
+
+      - name: Publish
+        if: steps.published.outputs.already == 'false'
+        run: npm publish --provenance --access public --tag dev
