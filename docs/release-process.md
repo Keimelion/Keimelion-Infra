@@ -9,7 +9,7 @@ SDK is the last job of its `release.yml`: `npm-publish.yml` instead of `deploy.y
 
 | In each app repo | Calls (here) | Role |
 |---|---|---|
-| `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors left for review) |
+| `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors and Keimelion-Infra updates left for review) |
 | `release.yml` (push main) | `node-ci.yml` → `release.yml` → `deploy.yml` (SDK: `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main`, deploy (SDK: publish to npmjs) if a tag was created |
 | `deploy.yml` (manual) | `deploy.yml` | redeploy `main` |
 | `codeql.yml` | `codeql.yml` | CodeQL `security-and-quality` |
@@ -18,9 +18,10 @@ Also identical in each app repo: `.releaserc.json`, `.commitlintrc.json`,
 `.husky/commit-msg`, `.github/dependabot.yml`, `.nvmrc` (`24`).
 
 Repo-specific values (compose service, health URL) are resolved in `deploy.yml` from
-the repo name — they sit here next to `docker-compose.yml`. Callers reference `@main`:
-merging here changes the pipeline of every repo at once (`lint.yml` runs actionlint on
-every PR here).
+the repo name — they sit here next to `docker-compose.yml`. Callers pin an exact tag of
+this repo (`@vX.Y.Z`): a change merged here reaches an app repo only when that repo merges
+its own update PR, see [Versioning of the reusable workflows](#versioning-of-the-reusable-workflows)
+(`lint.yml` runs actionlint on every PR here).
 
 ## Flow
 
@@ -124,6 +125,60 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
 
 Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *Run workflow*.
 
+## Versioning of the reusable workflows
+
+### Tag scheme
+
+Every change landing on `main` here gets a new immutable `vX.Y.Z` tag, created by
+`.github/workflows/tag.yml` (the first one is `v0.1.0`). There is **no floating tag** (`v0`,
+`v1`) and a tag is never moved: with a tag moved on every merge, one bad commit would still
+reach every repo at once, and Dependabot would not see any update to propose.
+
+### Bump rules
+
+The bump is computed from the commits since the latest tag, with the 0.x policy of the apps.
+Unlike the apps, **every** change is tagged, including `ci:` ones, which are most of the
+changes here.
+
+| Commits since the latest tag | Bump | Example |
+|---|---|---|
+| at least one `<type>!: …` or `BREAKING CHANGE:` footer | minor `0.1.4 → 0.2.0` | `ci!: rename the node-ci inputs` |
+| at least one `feat: …` | minor `0.1.4 → 0.2.0` | `feat: npm-publish reusable workflow` |
+| anything else | patch `0.1.4 → 0.1.5` | `ci: bump the runner timeout` |
+
+Going 1.0 is an explicit decision: tag `v1.0.0` by hand and change the rule in `tag.yml` so
+that a breaking change bumps the major.
+
+### Rollout through Dependabot
+
+1. A PR is merged on `main` here: `tag.yml` creates the tag. No app repo is affected.
+2. On its next weekly run, Dependabot (`github-actions` ecosystem of `.github/dependabot.yml`)
+   opens **one update PR per repo**. To get it sooner: *Insights → Dependency graph →
+   Dependabot → Check for updates* in the app repo.
+3. The PR is **reviewed and merged by hand**, one repo at a time if the change is risky.
+   `dependabot-automerge.yml` never merges a Keimelion-Infra update, whatever its type: PR CI
+   does not exercise release, deploy or npm-publish. The new pipeline is really exercised by
+   the next release of that repo, so start with a repo that can afford a failed release.
+
+Dependabot names a reusable workflow `Keimelion/Keimelion-Infra/.github/workflows/<file>.yml`,
+that is one dependency per workflow file. The `keimelion-infra` group of `dependabot.yml`
+brings them back into one PR, which also keeps every caller of a repo on the same tag.
+
+An update PR left unmerged does not go stale: when a newer tag exists, the next Dependabot
+run supersedes it (it closes the PR and opens one for the newest tag). There is nothing to
+clean up, and a superseded version never has to be merged first.
+
+### Testing a change before tagging
+
+A tag is cut as soon as a PR is merged here, so test from the PR branch first:
+
+1. In an app repo, create a throwaway branch and point the callers at the Infra branch:
+   `uses: Keimelion/Keimelion-Infra/.github/workflows/<file>.yml@<infra-branch>`.
+2. Open a **draft** PR from it and read the `CI` run. Only what `ci.yml` calls runs this way.
+   `release.yml`, `deploy.yml`, `npm-publish.yml` and `npm-publish-dev.yml` run after a merge
+   only, so review their changes by reading them.
+3. **Never merge that PR.** Close it and delete the branch, then merge the Infra PR.
+
 ## One-time GitHub setup
 
 - **Self-hosted runner on public repos**: org *Settings → Actions → General* →
@@ -151,6 +206,6 @@ Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *
     the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
     + tag on `main`, fast-forward of `dev`, or merge of `main` into `dev` if it moved)
   - `infra/` (this repo) — `main`: PR required, squash only, `actionlint` check, no bypass
-    (every app pipeline calls these workflows on `@main`)
+    (every tag the app pipelines pin is cut from `main`)
   - `collections/` (Keimelion-API-collections) — `main`: no deletion, no force-push
   - all: no deletion, no force-push

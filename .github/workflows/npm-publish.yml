@@ -6,7 +6,7 @@ name: npm-publish
 #     needs: release
 #     if: needs.release.outputs.published == 'true'
 #     permissions: { contents: read, id-token: write }
-#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish.yml@main
+#     uses: Keimelion/Keimelion-Infra/.github/workflows/npm-publish.yml@vX.Y.Z
 #     with: { version: "${{ needs.release.outputs.version }}" }
 #     secrets: inherit
 #

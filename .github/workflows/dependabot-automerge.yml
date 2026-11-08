@@ -2,7 +2,8 @@ name: dependabot-automerge
 
 # Squash-merges a Dependabot PR once its CI passed (the caller runs this job with
 # `needs:` on its checks) when the update is a semver patch or minor. Majors are left
-# open for a manual review.
+# open for a manual review, and so is any Keimelion-Infra update, whatever its type: PR CI
+# does not exercise release, deploy or npm-publish.
 
 on:
   workflow_call:
@@ -24,15 +25,19 @@ jobs:
 
       - name: Merge
         if: >-
-          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+          !contains(steps.meta.outputs.dependency-names, 'Keimelion/Keimelion-Infra') && (
+            steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+            steps.meta.outputs.update-type == 'version-update:semver-minor'
+          )
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ github.token }}
         run: gh pr merge "$PR_URL" --squash
 
-      - name: Leave majors for review
-        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+      - name: Leave majors and Keimelion-Infra updates for review
+        if: >-
+          contains(steps.meta.outputs.dependency-names, 'Keimelion/Keimelion-Infra') ||
+          steps.meta.outputs.update-type == 'version-update:semver-major'
         env:
           DEPS: ${{ steps.meta.outputs.dependency-names }}
-        run: echo "::notice::Major update ($DEPS), manual review required"
+        run: echo "::notice::Manual review required ($DEPS)"

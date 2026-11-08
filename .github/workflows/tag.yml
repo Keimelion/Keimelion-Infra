@@ -1,0 +1,63 @@
+name: tag
+
+# Cuts an immutable vX.Y.Z tag for every change landing on main. App repos pin one of these
+# tags, see docs/release-process.md. The bump comes from the Conventional Commits since the
+# latest tag, with the 0.x rules of the app repos: feat or breaking is minor, anything else
+# is patch. No floating tag (v0, v1) exists, and an existing tag is never moved.
+#
+# semantic-release does not fit: this repo has no package.json, and its `ci:` commits, which
+# are most of them, would not release anything.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Runs are serialized. GitHub keeps one pending run only: when a newer push replaces it, the
+# newer run tags both changes, since the range starts at the latest tag.
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create the next tag
+        run: |
+          latest=$(git tag --list --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n 1p || true)
+          if [[ -z "$latest" ]]; then
+            echo "::error::No vX.Y.Z tag found, the first tag must be created by hand"
+            exit 1
+          fi
+
+          # Also true for a re-run: the commit is then the latest tag or one of its ancestors.
+          if git merge-base --is-ancestor "$GITHUB_SHA" "$latest"; then
+            echo "::notice::$GITHUB_SHA is already covered by $latest, nothing to tag"
+            exit 0
+          fi
+
+          subjects=$(git log --format=%s "$latest..$GITHUB_SHA")
+          bodies=$(git log --format=%b "$latest..$GITHUB_SHA")
+
+          IFS=. read -r major minor patch <<<"${latest#v}"
+          if grep -qE '^[a-z]+(\([^)]+\))?!:|^feat(\([^)]+\))?:' <<<"$subjects" ||
+            grep -qiE '^breaking[ -]change:' <<<"$bodies"; then
+            next="v$major.$((minor + 1)).0"
+          else
+            next="v$major.$minor.$((patch + 1))"
+          fi
+
+          # Without --force, the push is rejected rather than moving a tag that already exists.
+          git push origin "$GITHUB_SHA:refs/tags/$next"
+          echo "::notice::Tagged $GITHUB_SHA as $next (previous: $latest)"
