@@ -78,6 +78,12 @@ services:
         PUBLIC_API_BASE_URL: ${PUBLIC_API_URL}
     restart: unless-stopped
     logging: *logging
+    depends_on:
+      - api
+    environment:
+      # Server-side waitlist calls stay on the Docker network: through Caddy, the visitor IP
+      # the landing forwards would be replaced by its own and all visitors share one rate limit
+      API_INTERNAL_URL: http://api:3000
     ports:
       - "127.0.0.1:${LANDING_PORT}:3002"
 

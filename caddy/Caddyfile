@@ -21,6 +21,14 @@
 	}
 }
 
+# The landing rate-limits on the leftmost X-Forwarded-For value and forwards it to the API: pass
+# it the client IP alone, otherwise a visitor can choose that value and get around the limits.
+(landing_upstream) {
+	reverse_proxy landing:3002 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
 # -----------------------------------------------------------------------------
 # Public hostnames
 # Flow: Cloudflare DNS → box :443 → NAS reverse proxy (TLS, Let's Encrypt)
@@ -29,7 +37,7 @@
 
 http://keimelion.zalbani.dev {
 	log
-	reverse_proxy landing:3002
+	import landing_upstream
 }
 
 http://admin.keimelion.zalbani.dev {
@@ -53,7 +61,7 @@ http://api.keimelion.zalbani.dev {
 # -----------------------------------------------------------------------------
 
 http://keimelion.local {
-	reverse_proxy landing:3002
+	import landing_upstream
 }
 
 http://admin.keimelion.local {
