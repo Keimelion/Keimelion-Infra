@@ -32,7 +32,7 @@ jobs:
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ github.token }}
-        run: gh pr merge "$PR_URL" --squash
+        run: gh pr merge "$PR_URL" --squash --delete-branch
 
       - name: Leave majors and Keimelion-Infra updates for review
         if: >-
