@@ -3,15 +3,15 @@
 One process, identical for the three app repos (API, Back-office, Landing) and the
 npm package repo (Keimelion-SDK, `@keimelion/sdk`).
 The logic lives in the **reusable workflows** of this repo; each app repo holds the
-same thin callers, **byte-for-byte identical** (no inputs). The only difference of the
-SDK is the last job of its `release.yml`: `npm-publish.yml` instead of `deploy.yml`
+same thin callers, **byte-for-byte identical** (no inputs). The SDK has no `deploy.yml`
+caller: its `release.yml` publishes to npmjs instead
 (see [npm package](#npm-package-keimelion-sdk)).
 
 | In each app repo | Calls (here) | Role |
 |---|---|---|
 | `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors and Keimelion-Infra updates left for review) |
-| `release.yml` (push main) | `node-ci.yml` → `release.yml` → `deploy.yml` (SDK: `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main`, deploy (SDK: publish to npmjs) if a tag was created |
-| `deploy.yml` (manual) | `deploy.yml` | redeploy `main` |
+| `release.yml` (push main) | `node-ci.yml` → `release.yml` (SDK: + `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main` (SDK: publish to npmjs if a tag was created). Apps: no deploy |
+| `deploy.yml` (`CI` green on a push to dev, or manual) | `deploy.yml` | deploy `dev` to the pre-prod |
 | `codeql.yml` | `codeql.yml` | CodeQL `security-and-quality` |
 
 Also identical in each app repo: `.releaserc.json`, `.commitlintrc.json`,
@@ -27,16 +27,28 @@ its own update PR, see [Versioning of the reusable workflows](#versioning-of-the
 
 ```
  feat/KEI-xx ──PR (squash)──▶ dev                     ci.yml: node-ci + pr-title
+                               │  CI green on the push ──▶ deploy.yml: pre-prod runs dev
                                │
                 Release PR dev → main  (MERGE COMMIT — never squash)
                                │
                                ▼
- main ─ push ─▶ release.yml:  ci ──▶ release ──▶ deploy (only if a tag was created)
+ main ─ push ─▶ release.yml:  ci ──▶ release
                                        │  semantic-release: vX.Y.Z tag, GitHub Release,
                                        │  CHANGELOG.md + package.json, "chore(release) [skip ci]"
                                        └─ fast-forward dev ← main, even if the release failed
                                           (the App merges main into dev if dev moved meanwhile)
 ```
+
+### Environments
+
+`*.keimelion.zalbani.dev` is the **pre-prod**: every push to `dev` whose `CI` run is green is
+deployed there. There is no production stack yet: a release on `main` creates its tag and
+GitHub Release and deploys nothing. Production comes with its own stack on `keimelion.app`.
+
+The app repos' `deploy.yml` starts from `workflow_run` rather than being a job of `ci.yml`:
+`ci.yml` cancels its in-progress run on every new push, which could stop a deploy in the
+middle of a migration. A cancelled CI simply deploys nothing, and the next green push deploys
+the tip of `dev`.
 
 ### Why a merge commit for the release PR
 
@@ -63,14 +75,14 @@ next breaking change gives `1.0.0`) or tag `v1.0.0` by hand.
 | `fix: …`, `perf: …`, `revert: …` | patch `0.3.1 → 0.3.2` | `fix: lists/:id 404 on archived list (KEI-150)` |
 | `feat: …` | minor `0.3.1 → 0.4.0` | `feat: users/me/export CSV (KEI-37)` |
 | `<type>!: …` or `BREAKING CHANGE:` footer | minor `0.3.1 → 0.4.0` (major after 1.0) | `feat!: drop /v0 routes (KEI-160)` |
-| `chore`, `ci`, `docs`, `refactor`, `test`, `style`, `build` | none — no tag, no deploy | `chore: bump deps` |
+| `chore`, `ci`, `docs`, `refactor`, `test`, `style`, `build` | none — no tag | `chore: bump deps` |
 
 GitHub Releases are created without commenting the released PRs/issues
 (`successComment: false`, `releasedLabels: false`).
 
 - The release PR title doesn't matter (merge commits are ignored): use `chore: release`.
 - The release commit is written by semantic-release: `chore(release): X.Y.Z [skip ci]`.
-- To ship a dependency bump or refactor anyway, title it `fix:` (or merge it with a
+- To release a dependency bump or refactor anyway, title it `fix:` (or merge it with a
   `fix`/`feat` in the same release).
 
 ## npm package (Keimelion-SDK)
@@ -121,9 +133,9 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
 
 1. Open a PR `dev → main` titled `chore: release`, wait for CI.
 2. **Merge with "Create a merge commit"**.
-3. Watch the `Release` run: tag + GitHub Release, `dev` fast-forwarded, then deploy.
+3. Watch the `Release` run: tag + GitHub Release, `dev` fast-forwarded.
 
-Manual redeploy of `main` (e.g. after a server rebuild): `Deploy` workflow → *Run workflow*.
+Manual redeploy of `dev` (e.g. after a server rebuild): `Deploy` workflow → *Run workflow*.
 
 ## Versioning of the reusable workflows
 

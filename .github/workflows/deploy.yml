@@ -8,6 +8,8 @@ name: deploy
 #   on failure: previous image back instantly, checked; if it is unhealthy on a schema
 #   this deploy migrated, the pre-deploy snapshot is restored. docs/runbook.md
 #   "Deploy, migrations & rollback".
+#
+# The single stack on *.keimelion.zalbani.dev is the pre-prod: it runs `dev`.
 
 on:
   workflow_call:
@@ -25,7 +27,7 @@ jobs:
       cancel-in-progress: false
     env:
       REPO_DIR: ${{ github.event.repository.name }}
-      BRANCH: main
+      BRANCH: dev
       DEPLOY: keimelion/Keimelion-Infra/scripts/deploy/app-deploy.sh
     steps:
       - name: Resolve service
@@ -47,11 +49,10 @@ jobs:
         id: version
         run: |
           cd ~/keimelion/"$REPO_DIR"
-          git fetch --prune origin "$BRANCH"
-          # Force-switch to the deploy branch so PREV reflects what's deployed,
-          # not whatever branch a human last checked out on the server.
-          git checkout -f "$BRANCH"
+          # HEAD is what was last deployed, whichever branch it is on. Switching to the deploy
+          # branch first would compare it with itself and skip a deploy after a branch change.
           PREV=$(git rev-parse HEAD)
+          git fetch --prune origin "$BRANCH"
           NEXT=$(git rev-parse "origin/$BRANCH")
           echo "prev=$PREV" >> "$GITHUB_OUTPUT"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
@@ -67,7 +68,7 @@ jobs:
         run: |
           ~/"$DEPLOY" save-image "$SERVICE"
           cd ~/keimelion/"$REPO_DIR"
-          git reset --hard "${{ steps.version.outputs.next }}"
+          git checkout -f -B "$BRANCH" "${{ steps.version.outputs.next }}"
           cd ~/keimelion/Keimelion-Infra
           docker compose build "$SERVICE"
 
