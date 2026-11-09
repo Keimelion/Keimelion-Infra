@@ -58,9 +58,6 @@ services:
   back:
     build:
       context: ../Keimelion-Backoffice
-      # The back-office imports ../Keimelion-API/src through the tsconfig alias @keimelion/api/*
-      additional_contexts:
-        api-src: ../Keimelion-API/src
       args:
         # Inlined into the browser bundle at build time: must be reachable from the browser
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
