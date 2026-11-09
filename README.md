@@ -32,9 +32,9 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
 │   ├── scripts/              ← scripts/backup/: backup, restore, restore test
 │   ├── systemd/              ← backup units + timers (installed by scripts/backup/install.sh)
 │   └── docs/
-├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (main)
-├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (main)
-└── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (main)
+├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (dev)
+├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (dev)
+└── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (dev)
 ```
 
 Build paths in `docker-compose.yml` are relative (`../Keimelion-API`, …):
@@ -45,9 +45,9 @@ the folder names above must be kept as is.
 ```bash
 cd ~/keimelion
 git clone git@github.com:Keimelion/Keimelion-Infra.git
-git clone -b main git@github.com:Keimelion/Keimelion-API.git
-git clone -b main git@github.com:Keimelion/Keimelion-Backoffice.git
-git clone git@github.com:Keimelion/Keimelion-Landing.git
+git clone -b dev git@github.com:Keimelion/Keimelion-API.git
+git clone -b dev git@github.com:Keimelion/Keimelion-Backoffice.git
+git clone -b dev git@github.com:Keimelion/Keimelion-Landing.git
 
 cd Keimelion-Infra
 cp .env.example .env
@@ -70,8 +70,8 @@ The seed is **never** run automatically (see the runbook).
 
 Automatic, through GitHub Actions on the self-hosted runner (health check + rollback):
 
-- **App releases** deploy their own service (reusable workflows of this repo, see
-  [docs/release-process.md](docs/release-process.md)).
+- **App repos**: a push to `dev` with a green CI run deploys that service to the pre-prod
+  (reusable workflows of this repo, see [docs/release-process.md](docs/release-process.md)).
 - **This repo**: every merge on `main` runs `deploy-infra.yml`, which pulls
   `~/keimelion/Keimelion-Infra`, runs `docker compose up -d --no-build` (recreates only
   the services whose config changed) and reloads Caddy when `caddy/` changed. It refuses
