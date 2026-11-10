@@ -153,6 +153,19 @@ migration, a few rows, server lost — in [backup.md](backup.md#restore).
 
 ## Secret rotation
 
+Secrets live in the server's `.env`, which is not in git, so the deploy workflows never
+change it. To change a value, for example `EMAIL_API_KEY`:
+
+```bash
+ssh milky-way
+cd ~/keimelion/Keimelion-Infra
+nano .env
+docker compose up -d api   # recreates the service with the new value
+```
+
+Replace `api` with every service that reads the changed value. Never paste a secret into
+a ticket, a commit or a log.
+
 ## Reboot and post-reboot checks
 
 ## Known incidents
