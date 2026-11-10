@@ -1,0 +1,56 @@
+{
+	# No ACME: TLS is terminated by the Synology reverse proxy for keimelion.app.
+	auto_https off
+
+	# The NAS reverse proxy is the only client of the public hostnames: trust its
+	# X-Forwarded-For, read right to left (strict) so the client IP is the first address
+	# not added by the NAS. A client sending its own X-Forwarded-For cannot choose it.
+	servers {
+		trusted_proxies static 192.168.1.100
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+# The API rate-limits by X-Forwarded-For: pass it the client IP alone (without this, every
+# visitor arrived as the NAS and shared one bucket).
+(api_upstream) {
+	reverse_proxy api:3000 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+# The landing rate-limits on the leftmost X-Forwarded-For value and forwards it to the API: pass
+# it the client IP alone, otherwise a visitor can choose that value and get around the limits.
+(landing_upstream) {
+	reverse_proxy landing:3002 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+# -----------------------------------------------------------------------------
+# Public hostnames
+# Flow: Cloudflare DNS → box :443 → NAS reverse proxy (TLS, Let's Encrypt)
+#       → http://192.168.1.102:8080 → here, routed by Host.
+# -----------------------------------------------------------------------------
+
+http://keimelion.app {
+	log
+	import landing_upstream
+}
+
+http://admin.keimelion.app {
+	log
+	reverse_proxy back:3001
+}
+
+http://api.keimelion.app {
+	log
+	handle_path /uploads/* {
+		root * /srv/uploads
+		header Cross-Origin-Resource-Policy "cross-origin"
+		header Cache-Control "public, max-age=3600"
+		file_server
+	}
+	import api_upstream
+}

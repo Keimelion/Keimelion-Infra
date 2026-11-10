@@ -14,7 +14,8 @@
 #                                               is unhealthy on it: restore the pre-deploy
 #                                               snapshot, checked again
 #
-# RESTORE_CMD overrides the restore (default: the keimelion-db-restore@pre-deploy-api unit).
+# RESTORE_CMD overrides the restore (default: the <BACKUP_UNIT_PREFIX>-db-restore@pre-deploy-api unit,
+# prefix keimelion unless set).
 set -euo pipefail
 
 INFRA_DIR=${KEIMELION_INFRA_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}
@@ -108,8 +109,8 @@ rollback() {
   if [ -n "${RESTORE_CMD:-}" ]; then
     bash -c "$RESTORE_CMD" || { error "restore failed"; return 1; }
   else
-    sudo -n systemctl start --wait keimelion-db-restore@pre-deploy-api.service || {
-      error "restore failed (journalctl -u keimelion-db-restore@pre-deploy-api)"
+    sudo -n systemctl start --wait "${BACKUP_UNIT_PREFIX:-keimelion}-db-restore@pre-deploy-api.service" || {
+      error "restore failed (journalctl -u ${BACKUP_UNIT_PREFIX:-keimelion}-db-restore@pre-deploy-api)"
       return 1
     }
   fi

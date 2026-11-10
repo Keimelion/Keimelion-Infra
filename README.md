@@ -83,11 +83,12 @@ With `NODE_ENV=production`, a send fails and logs an error if `EMAIL_API_KEY` or
 
 Automatic, through GitHub Actions on the self-hosted runner (health check + rollback):
 
-- **App repos**: a push to `dev` with a green CI run deploys that service to the pre-prod
-  (reusable workflows of this repo, see [docs/release-process.md](docs/release-process.md)).
-- **This repo**: every merge on `main` runs `deploy-infra.yml`, which pulls
-  `~/keimelion/Keimelion-Infra`, runs `docker compose up -d --no-build` (recreates only
-  the services whose config changed) and reloads Caddy when `caddy/` changed. It refuses
+- **App repos**: a push to `dev` with a green CI run deploys that service to the pre-prod, a
+  push to `main` with a green Release run deploys it to the production (reusable workflows of
+  this repo, see [docs/release-process.md](docs/release-process.md)).
+- **This repo**: every merge on `main` runs `deploy-infra.yml`, which for the pre-prod and
+  then the production pulls the stack's checkout, runs `docker compose up -d --no-build` (recreates only
+  the services whose config changed) and reloads Caddy when its config changed. It refuses
   to run if tracked files were edited by hand on the server. `.env` changes are not in
   git: apply them by hand (`docker compose up -d`).
 
@@ -113,6 +114,9 @@ Flow: Cloudflare DNS (CNAME → `backward.zalbani.dev`) → home router (:443 an
 HTTP-01) → `http://192.168.1.102:80` → Caddy on milky-way. The NAS, DNS
 records and reverse-proxy entries are configured outside this repo
 (dashboard-managed); see `docs/runbook.md`, "Cloudflare / NAS exposure".
+
+This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:8080`, see
+`docs/runbook.md`, "Production stack".
 
 ## Services
 

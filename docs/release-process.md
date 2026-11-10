@@ -10,8 +10,8 @@ caller: its `release.yml` publishes to npmjs instead
 | In each app repo | Calls (here) | Role |
 |---|---|---|
 | `ci.yml` (PR → dev/main, push dev) | `node-ci.yml`, `pr-title.yml`, `dependabot-automerge.yml` | `npm ci` + `lint typecheck test build` (missing scripts skipped), `.env.example` as build env; PR title = Conventional Commit; Dependabot patch/minor PRs squash-merged once green (majors and Keimelion-Infra updates left for review) |
-| `release.yml` (push main) | `node-ci.yml` → `release.yml` (SDK: + `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main` (SDK: publish to npmjs if a tag was created). Apps: no deploy |
-| `deploy.yml` (`CI` green on a push to dev, or manual) | `deploy.yml` | deploy `dev` to the pre-prod |
+| `release.yml` (push main) | `node-ci.yml` → `release.yml` (SDK: + `npm-publish.yml`) | semantic-release, fast-forward `dev` onto `main` (SDK: publish to npmjs if a tag was created) |
+| `deploy.yml` (`CI` green on a push to dev, `Release` green on main, or manual) | `deploy.yml` | deploy `dev` to the pre-prod, `main` to the production |
 | `codeql.yml` | `codeql.yml` | CodeQL `security-and-quality` |
 
 Also identical in each app repo: `.releaserc.json`, `.commitlintrc.json`,
@@ -42,8 +42,13 @@ its own update PR, see [Versioning of the reusable workflows](#versioning-of-the
 ### Environments
 
 `*.keimelion.zalbani.dev` is the **pre-prod**: every push to `dev` whose `CI` run is green is
-deployed there. There is no production stack yet: a release on `main` creates its tag and
-GitHub Release and deploys nothing. Production comes with its own stack on `keimelion.app`.
+deployed there.
+
+`keimelion.app` is the **production**: every push to `main` whose `Release` run is green is
+deployed there, even when no tag was created. `ci.yml` does not run on `main`: `Release` holds
+its tests, and deploying after it includes the release commit. That commit carries `[skip ci]`,
+so it starts no workflow; a deploy already at the tip of `main` skips its steps.
+See the runbook, "Production stack".
 
 The app repos' `deploy.yml` starts from `workflow_run` rather than being a job of `ci.yml`:
 `ci.yml` cancels its in-progress run on every new push, which could stop a deploy in the
@@ -135,7 +140,7 @@ error codes, HTTP client), published **publicly** on npmjs. Same flow as the app
 2. **Merge with "Create a merge commit"**.
 3. Watch the `Release` run: tag + GitHub Release, `dev` fast-forwarded.
 
-Manual redeploy of `dev` (e.g. after a server rebuild): `Deploy` workflow → *Run workflow*.
+Manual redeploy (e.g. after a server rebuild): `Deploy` workflow → *Run workflow*, choosing the stack.
 
 ## Versioning of the reusable workflows
 

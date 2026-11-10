@@ -27,7 +27,7 @@ capture_log
 with_lock
 
 WORK=$(mktemp -d "$BACKUP_ROOT/work/verify.XXXXXX")
-CONTAINER="keimelion-restore-test-$$"
+CONTAINER="$(env_get COMPOSE_PROJECT_NAME keimelion)-restore-test-$$"
 STARTED=$(date +%s)
 
 finish() {

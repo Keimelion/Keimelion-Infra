@@ -3,7 +3,7 @@
 Description=Keimelion weekly backup restore test
 
 [Timer]
-OnCalendar=Sun *-*-* 04:45:00
+OnCalendar=@VERIFY_ON_CALENDAR@
 RandomizedDelaySec=10min
 Persistent=true
 

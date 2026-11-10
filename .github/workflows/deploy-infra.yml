@@ -1,8 +1,9 @@
 name: deploy-infra
 
-# Applies this repo on milky-way after a merge on main: pull ~/keimelion/Keimelion-Infra,
+# Applies this repo on milky-way after a merge on main, to the pre-prod then to the production
+# (a pre-prod failure stops there): pull the stack's Keimelion-Infra checkout,
 # `docker compose up -d` (recreates only the services whose config changed, never rebuilds
-# the app images — their own deploy does), reload Caddy if caddy/ changed, then health
+# the app images — their own deploy does), reload Caddy if its config changed, then health
 # check every public URL; rollback to the previous commit on failure.
 # .env and data/ are untracked: never touched. A restic snapshot is taken before applying.
 
@@ -16,19 +17,46 @@ permissions:
 
 jobs:
   deploy:
-    name: Apply Infra
+    name: Apply Infra (${{ matrix.environment }})
     runs-on: [self-hosted, keimelion]
     timeout-minutes: 15
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        environment: [preprod, production]
     concurrency:
-      group: deploy-${{ github.repository }}
+      group: deploy-${{ matrix.environment }}-${{ github.repository }}
       cancel-in-progress: false
     env:
-      INFRA_DIR: keimelion/Keimelion-Infra
+      DEPLOY_ENV: ${{ matrix.environment }}
     steps:
+      - name: Resolve environment
+        run: |
+          case "$DEPLOY_ENV" in
+            preprod)
+              INFRA_DIR=$HOME/keimelion/Keimelion-Infra; BACKUP_UNIT_PREFIX=keimelion; CADDY_DIR=caddy/
+              URLS="https://api.keimelion.zalbani.dev/health https://admin.keimelion.zalbani.dev/ https://keimelion.zalbani.dev/" ;;
+            production)
+              INFRA_DIR=/home/zalbani/keimelion-prod/Keimelion-Infra; BACKUP_UNIT_PREFIX=keimelion-prod; CADDY_DIR=caddy-prod/
+              URLS="https://api.keimelion.app/health https://admin.keimelion.app/ https://keimelion.app/" ;;
+          esac
+          {
+            echo "INFRA_DIR=$INFRA_DIR"
+            echo "BACKUP_UNIT_PREFIX=$BACKUP_UNIT_PREFIX"
+            echo "CADDY_DIR=$CADDY_DIR"
+            echo "HEALTH_URLS=$URLS"
+          } >> "$GITHUB_ENV"
+
       - name: Detect new version
         id: version
         run: |
-          cd ~/"$INFRA_DIR"
+          # Bootstrap: without outputs every following step skips (docs/runbook.md "Production stack").
+          if [ ! -f "$INFRA_DIR/.env" ]; then
+            echo "::notice::No stack in $INFRA_DIR, nothing to apply"
+            exit 0
+          fi
+          cd "$INFRA_DIR"
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             echo "::error::Tracked files edited by hand on the server, commit them or discard them first:"
             git status --short --untracked-files=no
@@ -44,12 +72,12 @@ jobs:
             echo "::notice::Already at $NEXT, nothing to apply"
             exit 0
           fi
-          if git diff --quiet "$PREV" "$NEXT" -- caddy/; then
+          if git diff --quiet "$PREV" "$NEXT" -- "$CADDY_DIR"; then
             echo "caddy=false" >> "$GITHUB_OUTPUT"
           else
             echo "caddy=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "::notice::Keimelion-Infra ${PREV:0:7} -> ${NEXT:0:7}"
+          echo "::notice::Keimelion-Infra ${PREV:0:7} -> ${NEXT:0:7} ($DEPLOY_ENV)"
           git diff --stat "$PREV" "$NEXT"
 
       # A compose change can recreate postgres (image bump, settings): snapshot first.
@@ -58,12 +86,12 @@ jobs:
       - name: Pre-deploy backup
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
-          if [ ! -f /etc/systemd/system/keimelion-db-backup@.service ]; then
+          if [ ! -f "/etc/systemd/system/$BACKUP_UNIT_PREFIX-db-backup@.service" ]; then
             echo "::warning::Backups not installed on the server (sudo scripts/backup/install.sh), applying without a snapshot"
             exit 0
           fi
-          if ! sudo -n systemctl start --wait keimelion-db-backup@pre-deploy.service; then
-            journalctl -u keimelion-db-backup@pre-deploy.service -n 40 --no-pager || true
+          if ! sudo -n systemctl start --wait "$BACKUP_UNIT_PREFIX-db-backup@pre-deploy.service"; then
+            journalctl -u "$BACKUP_UNIT_PREFIX-db-backup@pre-deploy.service" -n 40 --no-pager || true
             echo "::error::Pre-deploy backup failed, apply aborted (nothing changed yet)"
             exit 1
           fi
@@ -71,7 +99,7 @@ jobs:
       - name: Apply
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
-          cd ~/"$INFRA_DIR"
+          cd "$INFRA_DIR"
           git reset -q --hard "${{ steps.version.outputs.next }}"
           docker compose up -d --no-build
           if [ "${{ steps.version.outputs.caddy }}" = "true" ]; then
@@ -82,7 +110,7 @@ jobs:
         if: steps.version.outputs.prev != steps.version.outputs.next
         run: |
           sleep 5
-          for url in https://api.keimelion.zalbani.dev/health https://admin.keimelion.zalbani.dev/ https://keimelion.zalbani.dev/; do
+          for url in $HEALTH_URLS; do
             ok=false
             for _ in $(seq 1 30); do
               if curl -fsS -o /dev/null --max-time 5 "$url"; then ok=true; break; fi
@@ -98,8 +126,8 @@ jobs:
       - name: Rollback on failure
         if: failure() && steps.version.outputs.prev != '' && steps.version.outputs.prev != steps.version.outputs.next
         run: |
-          echo "::warning::Rolling Keimelion-Infra back to ${{ steps.version.outputs.prev }}"
-          cd ~/"$INFRA_DIR"
+          echo "::warning::Rolling Keimelion-Infra back to ${{ steps.version.outputs.prev }} ($DEPLOY_ENV)"
+          cd "$INFRA_DIR"
           git reset -q --hard "${{ steps.version.outputs.prev }}"
           docker compose up -d --no-build
           docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
