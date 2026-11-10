@@ -66,6 +66,19 @@ sudo scripts/backup/install.sh && scripts/backup/init-repos.sh
 Drizzle migrations are applied automatically when the API starts.
 The seed is **never** run automatically (see the runbook).
 
+### Transactional email
+
+The API reads these variables from `.env` (the `api` service loads it through `env_file`):
+
+| Variable | Role |
+|---|---|
+| `EMAIL_PROVIDER` | Mail adapter used by the API (default: `resend`) |
+| `EMAIL_API_KEY` | Provider API key. Secret: never commit or log it |
+| `EMAIL_FROM` | Sender address, on `keimelion.app` |
+
+With `NODE_ENV=production`, a send fails and logs an error if `EMAIL_API_KEY` or
+`EMAIL_FROM` is empty. Outside production, emails are written to the API log.
+
 ## Updating
 
 Automatic, through GitHub Actions on the self-hosted runner (health check + rollback):
