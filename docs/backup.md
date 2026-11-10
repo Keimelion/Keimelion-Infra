@@ -104,6 +104,12 @@ copies the snapshot).
    journalctl -u 'keimelion-*' -n 50
    ```
 
+The production stack repeats these steps from its own checkout. `BACKUP_ROOT`,
+`RESTIC_PASSWORD_FILE` and `RESTIC_OFFSITE_REPOSITORY` in its `.env` point to its own
+repositories, and `BACKUP_UNIT_PREFIX` gives it its own units, timers (shifted by
+`BACKUP_ON_CALENDAR` / `VERIFY_ON_CALENDAR`) and sudoers file: replace `keimelion-` with
+`keimelion-prod-` in the commands below. Its password goes in its own password manager entry.
+
 ## Day-to-day
 
 ```bash

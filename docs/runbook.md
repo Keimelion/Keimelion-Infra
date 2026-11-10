@@ -34,10 +34,10 @@ address (TLS was terminated upstream).
 ## Deploy a new version
 
 Automatic: a push to `dev` with a green CI run deploys it to the pre-prod
-(health check + rollback, see "Deploy, migrations & rollback" below). A release on `main`
-deploys nothing until a production stack exists. See
+(health check + rollback, see "Deploy, migrations & rollback" below). A green `Release` on
+`main` deploys it to the production ("Production stack" below). See
 [release-process.md](release-process.md).
-Manual redeploy of `dev`: run the repo's `Deploy` workflow from GitHub.
+Manual redeploy: run the repo's `Deploy` workflow from GitHub, choosing the stack.
 
 Fallback without CI (runner down):
 
@@ -165,6 +165,26 @@ docker compose up -d api   # recreates the service with the new value
 
 Replace `api` with every service that reads the changed value. Never paste a secret into
 a ticket, a commit or a log.
+
+## Production stack
+
+`keimelion.app` runs on the same server, next to the pre-prod and isolated from it:
+
+| | Pre-prod | Production |
+|---|---|---|
+| Branch | `dev` | `main` |
+| Checkouts | `~/keimelion` (runner's path) | `/home/zalbani/keimelion-prod` |
+| Compose project | `keimelion` | `keimelion-prod` (`COMPOSE_PROJECT_NAME` in `.env`) |
+| Caddy | `:80`, `caddy/` | `:8080`, `caddy-prod/` |
+| Debug ports (API, back, landing, Postgres) | 3000, 3001, 3002, 5432 | 3100, 3101, 3102, 5433 |
+| Units | `keimelion-*` | `keimelion-prod-*` |
+| Backups | `/var/backups/keimelion`, `restic` on the NAS | `/var/backups/keimelion-prod`, `restic-prod` on the NAS |
+
+Setup: the README "Initial setup" in `/home/zalbani/keimelion-prod`, cloning `main` for every
+repo (mode 2775, group `keimelion-stack`), with the variables of the "Production stack only"
+block of `.env.example` and new secrets. Then `docs/backup.md` "One-time setup", from that
+checkout. An Infra merge on `main` is applied to the pre-prod, then to the production;
+the production is skipped while `/home/zalbani/keimelion-prod/Keimelion-Infra/.env` is missing.
 
 ## Reboot and post-reboot checks
 

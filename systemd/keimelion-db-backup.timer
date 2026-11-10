@@ -3,10 +3,10 @@
 Description=Keimelion scheduled backup
 
 [Timer]
-OnCalendar=*-*-* 00/6:15:00
+OnCalendar=@BACKUP_ON_CALENDAR@
 RandomizedDelaySec=5min
 Persistent=true
-Unit=keimelion-db-backup@scheduled.service
+Unit=@UNIT_PREFIX@-db-backup@scheduled.service
 
 [Install]
 WantedBy=timers.target
