@@ -36,12 +36,12 @@ jobs:
     steps:
       - name: Resolve service
         run: |
+          # Absolute: CI, systemd and manual commands must share one path, Compose hashes it.
           case "$DEPLOY_ENV" in
             preprod)
-              BRANCH=dev;  STACK_DIR=$HOME/keimelion;            BACKUP_UNIT_PREFIX=keimelion
+              BRANCH=dev;  STACK_DIR=/home/zalbani/keimelion-integration; BACKUP_UNIT_PREFIX=keimelion
               API=https://api.keimelion.zalbani.dev; ADMIN=https://admin.keimelion.zalbani.dev; LANDING=https://keimelion.zalbani.dev ;;
             production)
-              # Absolute: CI, systemd and manual commands must share one path, Compose hashes it.
               BRANCH=main; STACK_DIR=/home/zalbani/keimelion-prod; BACKUP_UNIT_PREFIX=keimelion-prod
               API=https://api.keimelion.app; ADMIN=https://admin.keimelion.app; LANDING=https://keimelion.app ;;
             *) echo "::error::Unknown environment $DEPLOY_ENV"; exit 1 ;;

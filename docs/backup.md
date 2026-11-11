@@ -63,7 +63,7 @@ copies the snapshot).
 1. **System part** (restic package, `/var/backups/keimelion`, systemd units + timers,
    sudoers rule for the GitHub runner), from the deploy checkout:
    ```bash
-   cd ~/keimelion/Keimelion-Infra
+   cd ~/keimelion-integration/Keimelion-Infra
    sudo scripts/backup/install.sh
    ```
 2. **NAS** (DSM):
@@ -119,7 +119,7 @@ journalctl -u keimelion-backup-verify -n 30               # last restore test
 sudo systemctl start --wait keimelion-db-backup@manual    # backup now (e.g. before a manual operation)
 
 # restic by hand (as the backup user)
-export RESTIC_PASSWORD_FILE=~/keimelion/Keimelion-Infra/secrets/restic-password
+export RESTIC_PASSWORD_FILE=~/keimelion-integration/Keimelion-Infra/secrets/restic-password
 restic -r /var/backups/keimelion/restic snapshots
 restic -r sftp:keimelion-nas:/keimelion-backup/restic snapshots
 restic -r /var/backups/keimelion/restic dump latest /var/backups/keimelion/staging/manifest.env
@@ -127,7 +127,7 @@ restic -r /var/backups/keimelion/restic dump latest /var/backups/keimelion/stagi
 
 ## Restore
 
-All scenarios start from `cd ~/keimelion/Keimelion-Infra`.
+All scenarios start from `cd ~/keimelion-integration/Keimelion-Infra`.
 
 ### A. Bad migration / bad data, server OK
 
@@ -183,13 +183,13 @@ Needs: the NAS and the restic password (password manager).
    it on the NAS), recreate the `keimelion-nas` alias in `~/.ssh/config`.
 3. Get the `.env` and the uploads back from the NAS:
    ```bash
-   cd ~/keimelion/Keimelion-Infra
+   cd ~/keimelion-integration/Keimelion-Infra
    mkdir -p secrets && (umask 077; cat >secrets/restic-password)   # paste the password, Ctrl-D
    export RESTIC_PASSWORD_FILE=$PWD/secrets/restic-password
    restic -r sftp:keimelion-nas:/keimelion-backup/restic restore latest --host keimelion --target /tmp/dr
-   cp /tmp/dr/home/*/keimelion/Keimelion-Infra/.env .env && chmod 600 .env
+   cp /tmp/dr/home/*/keimelion-integration/Keimelion-Infra/.env .env && chmod 600 .env
    sudo scripts/setup-data-dirs.sh
-   cp -a /tmp/dr/home/*/keimelion/Keimelion-Infra/data/uploads/. data/uploads/
+   cp -a /tmp/dr/home/*/keimelion-integration/Keimelion-Infra/data/uploads/. data/uploads/
    ```
    (adapt `BACKUP_ROOT`, `RESTIC_PASSWORD_FILE` in `.env` if the paths changed)
 4. Start the stack (`docker compose up -d --build`): the API creates an empty schema.

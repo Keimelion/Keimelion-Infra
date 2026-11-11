@@ -7,7 +7,7 @@ Follow the README "Initial setup". Run `scripts/setup-data-dirs.sh` (with `sudo`
 ## Start / stop the stack
 
 ```bash
-cd ~/keimelion/Keimelion-Infra
+cd ~/keimelion-integration/Keimelion-Infra
 docker compose up -d           # start everything
 docker compose down            # stop (containers + network, keeps volumes)
 docker compose restart caddy   # restart one service
@@ -42,7 +42,7 @@ Manual redeploy: run the repo's `Deploy` workflow from GitHub, choosing the stac
 Fallback without CI (runner down):
 
 ```bash
-cd ~/keimelion
+cd ~/keimelion-integration
 git -C Keimelion-API checkout dev && git -C Keimelion-API pull --ff-only   # every app repo tracks dev on the server
 cd Keimelion-Infra
 docker compose up -d --build api  # or back / landing / caddy
@@ -158,7 +158,7 @@ change it. To change a value, for example `EMAIL_API_KEY`:
 
 ```bash
 ssh milky-way
-cd ~/keimelion/Keimelion-Infra
+cd ~/keimelion-integration/Keimelion-Infra
 nano .env
 docker compose up -d api   # recreates the service with the new value
 ```
@@ -173,9 +173,9 @@ a ticket, a commit or a log.
 | | Pre-prod | Production |
 |---|---|---|
 | Branch | `dev` | `main` |
-| Checkouts | `~/keimelion` (runner's path) | `/home/zalbani/keimelion-prod` |
+| Checkouts | `/home/zalbani/keimelion-integration` | `/home/zalbani/keimelion-prod` |
 | Compose project | `keimelion` | `keimelion-prod` (`COMPOSE_PROJECT_NAME` in `.env`) |
-| Caddy | `:80`, `caddy/` | `:8080`, `caddy-prod/` |
+| Caddy | `:8080`, `caddy/` | `:80`, `caddy-prod/` |
 | Debug ports (API, back, landing, Postgres) | 3000, 3001, 3002, 5432 | 3100, 3101, 3102, 5433 |
 | Units | `keimelion-*` | `keimelion-prod-*` |
 | Backups | `/var/backups/keimelion`, `restic` on the NAS | `/var/backups/keimelion-prod`, `restic-prod` on the NAS |
@@ -205,7 +205,7 @@ The redirect to `/en/` based on the browser language (defined in `vercel.json`) 
 
 - Docker publishes ports through its own iptables rules (NAT + `FORWARD` chain, filterable only in `DOCKER-USER`), not through `INPUT`: **UFW rules do not apply to published ports**.
 - Debug ports (api 3000, back 3001, landing 3002, postgres 5432) are deliberately bound to `127.0.0.1`: reach them through an SSH tunnel from a dev workstation.
-- Caddy on `:80` is bound to `0.0.0.0`. It is the only entry point from the LAN **and** from the NAS reverse proxy, routing by `Host` header (see "Cloudflare / NAS exposure" and "Access from a LAN client"). UFW is currently **inactive**.
+- Caddy (pre-prod `:8080`, production `:80`) is bound to `0.0.0.0`. It is the only entry point from the LAN **and** from the NAS reverse proxy, routing by `Host` header (see "Cloudflare / NAS exposure" and "Access from a LAN client"). UFW is currently **inactive**.
 - The home router forwards `:80` and `:443` to the Synology NAS (`192.168.1.100`), which handles TLS for `*.zalbani.dev`. No port is forwarded directly to milky-way (`192.168.1.102`).
 
 ## Client IP behind the NAS
@@ -240,7 +240,7 @@ this repo (dashboard, not Git) because the setup predates the project:
 2. **Home router port forwards**: `80/tcp` and `443/tcp` → `192.168.1.100` (NAS).
 
 3. **Synology DSM → Control Panel → Login Portal → Advanced → Reverse Proxy**:
-   three entries, all HTTPS :443 (source) → HTTP `192.168.1.102:80` (destination,
+   three entries, all HTTPS :443 (source) → HTTP `192.168.1.102:8080` (destination,
    milky-way LAN IP). "Create → WebSocket" preset enabled so `Upgrade` /
    `Connection` headers pass through. DSM preserves the original `Host`
    header (nginx `proxy_set_header Host $host`), which lets Caddy dispatch.
@@ -266,8 +266,8 @@ The stack is reachable in two ways from the LAN:
   ```
   192.168.1.102   keimelion.local admin.keimelion.local api.keimelion.local
   ```
-  Then: http://keimelion.local, http://admin.keimelion.local,
-  http://api.keimelion.local. http://192.168.1.102 redirects to the landing.
+  Then: http://keimelion.local:8080, http://admin.keimelion.local:8080,
+  http://api.keimelion.local:8080. http://192.168.1.102:8080 redirects to the landing.
   Caveat: the front-end bundles call `https://api.keimelion.zalbani.dev`
   (baked at build time), and the API's CORS allow-list does not include the
   `.local` origins, so opening a front via `.local` from a browser gives a

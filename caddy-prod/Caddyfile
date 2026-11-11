@@ -31,7 +31,7 @@
 # -----------------------------------------------------------------------------
 # Public hostnames
 # Flow: Cloudflare DNS → box :443 → NAS reverse proxy (TLS, Let's Encrypt)
-#       → http://192.168.1.102:8080 → here, routed by Host.
+#       → http://192.168.1.102:80 → here, routed by Host.
 # -----------------------------------------------------------------------------
 
 http://keimelion.app {

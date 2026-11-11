@@ -35,7 +35,7 @@ jobs:
         run: |
           case "$DEPLOY_ENV" in
             preprod)
-              INFRA_DIR=$HOME/keimelion/Keimelion-Infra; BACKUP_UNIT_PREFIX=keimelion; CADDY_DIR=caddy/
+              INFRA_DIR=/home/zalbani/keimelion-integration/Keimelion-Infra; BACKUP_UNIT_PREFIX=keimelion; CADDY_DIR=caddy/
               URLS="https://api.keimelion.zalbani.dev/health https://admin.keimelion.zalbani.dev/ https://keimelion.zalbani.dev/" ;;
             production)
               INFRA_DIR=/home/zalbani/keimelion-prod/Keimelion-Infra; BACKUP_UNIT_PREFIX=keimelion-prod; CADDY_DIR=caddy-prod/
