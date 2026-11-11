@@ -14,12 +14,12 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
   (https://docs.docker.com/engine/install/debian/) — not Debian's `docker.io` package
 - User in the `docker` group
 - SSH key authorized on the `Keimelion` GitHub organization
-- Sibling repos cloned in `~/keimelion/` (see layout below)
+- Sibling repos cloned in `~/keimelion-integration/` (see layout below)
 
 ## Expected layout on disk
 
 ```
-~/keimelion/
+~/keimelion-integration/
 ├── Keimelion-Infra/          ← this repo
 │   ├── docker-compose.yml
 │   ├── .env                  ← local secrets (gitignored)
@@ -43,7 +43,7 @@ the folder names above must be kept as is.
 ## Initial setup
 
 ```bash
-cd ~/keimelion
+cd ~/keimelion-integration
 git clone git@github.com:Keimelion/Keimelion-Infra.git
 git clone -b dev git@github.com:Keimelion/Keimelion-API.git
 git clone -b dev git@github.com:Keimelion/Keimelion-Backoffice.git
@@ -95,7 +95,7 @@ Automatic, through GitHub Actions on the self-hosted runner (health check + roll
 Manual fallback (runner down), pulling every repo and rebuilding what changed:
 
 ```bash
-cd ~/keimelion
+cd ~/keimelion-integration
 for r in Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Infra; do git -C "$r" pull --ff-only; done
 cd Keimelion-Infra
 docker compose up -d --build
@@ -111,11 +111,11 @@ The stack is reachable at:
 
 Flow: Cloudflare DNS (CNAME → `backward.zalbani.dev`) → home router (:443 and
 :80 forwarded to the NAS) → Synology reverse proxy (TLS, Let's Encrypt
-HTTP-01) → `http://192.168.1.102:80` → Caddy on milky-way. The NAS, DNS
+HTTP-01) → `http://192.168.1.102:8080` → Caddy on milky-way. The NAS, DNS
 records and reverse-proxy entries are configured outside this repo
 (dashboard-managed); see `docs/runbook.md`, "Cloudflare / NAS exposure".
 
-This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:8080`, see
+This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:80`, see
 `docs/runbook.md`, "Production stack".
 
 ## Services
@@ -126,11 +126,11 @@ This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:
 | api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
 | back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
-| caddy     | 0.0.0.0:80             | caddy:2-alpine            |
+| caddy     | 0.0.0.0:8080           | caddy:2-alpine            |
 
 Caddy routes by hostname and stays in plain HTTP. TLS for `*.keimelion.zalbani.dev`
 is terminated upstream by the Synology NAS (reverse proxy + Let's Encrypt), which
-forwards to `http://192.168.1.102:80` where Caddy dispatches to `landing:3002`,
+forwards to `http://192.168.1.102:8080` where Caddy dispatches to `landing:3002`,
 `back:3001` or `api:3000` (+ `/uploads/*` served from `data/uploads`). LAN hostnames
 `*.keimelion.local` are kept as a plain-HTTP fallback via `/etc/hosts`.
 The debug ports (api/back/landing/postgres) are bound to loopback — see the runbook
