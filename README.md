@@ -75,9 +75,12 @@ The API reads these variables from `.env` (the `api` service loads it through `e
 | `EMAIL_PROVIDER` | Mail adapter used by the API (default: `resend`) |
 | `EMAIL_API_KEY` | Provider API key. Secret: never commit or log it |
 | `EMAIL_FROM` | Sender address, on `keimelion.app` |
+| `LANDING_URL` | Public landing URL the emails link to: `https://keimelion.zalbani.dev` (pre-prod), `https://keimelion.app` (production) |
+| `APP_URL` | Public API URL; the email images are served from `APP_URL/assets/mail/*` |
 
 With `NODE_ENV=production`, a send fails and logs an error if `EMAIL_API_KEY` or
-`EMAIL_FROM` is empty. Outside production, emails are written to the API log.
+`EMAIL_FROM` is empty, and the API refuses to start if `LANDING_URL` is a local URL while
+`EMAIL_PROVIDER` is not `log`. Outside production, emails are written to the API log.
 
 ## Updating
 
