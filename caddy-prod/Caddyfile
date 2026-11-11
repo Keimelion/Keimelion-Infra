@@ -39,6 +39,12 @@ http://keimelion.app {
 	import landing_upstream
 }
 
+# One canonical URL: www redirects to the apex.
+http://www.keimelion.app {
+	log
+	redir https://keimelion.app{uri} permanent
+}
+
 http://admin.keimelion.app {
 	log
 	reverse_proxy back:3001
