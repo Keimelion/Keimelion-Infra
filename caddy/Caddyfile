@@ -29,6 +29,11 @@
 	}
 }
 
+# Pre-prod only: keep search engines away, the production is keimelion.app.
+(noindex) {
+	header X-Robots-Tag "noindex, nofollow"
+}
+
 # -----------------------------------------------------------------------------
 # Public hostnames
 # Flow: Cloudflare DNS → box :443 → NAS reverse proxy (TLS, Let's Encrypt)
@@ -37,16 +42,19 @@
 
 http://keimelion.zalbani.dev {
 	log
+	import noindex
 	import landing_upstream
 }
 
 http://admin.keimelion.zalbani.dev {
 	log
+	import noindex
 	reverse_proxy back:3001
 }
 
 http://api.keimelion.zalbani.dev {
 	log
+	import noindex
 	handle_path /uploads/* {
 		root * /srv/uploads
 		header Cross-Origin-Resource-Policy "cross-origin"
