@@ -88,6 +88,11 @@ jobs:
           "$DEPLOY" save-image "$SERVICE"
           cd "$STACK_DIR/$REPO_DIR"
           git checkout -f -B "$BRANCH" "${{ steps.version.outputs.next }}"
+          # Shown next to the version in the pre-prod footers; production shows the release only.
+          if [ "$DEPLOY_ENV" != production ]; then
+            GIT_SHA=$(git rev-parse --short HEAD)
+            export GIT_SHA
+          fi
           cd "$STACK_DIR/Keimelion-Infra"
           docker compose build "$SERVICE"
 
