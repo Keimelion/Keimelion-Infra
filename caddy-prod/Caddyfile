@@ -28,6 +28,14 @@
 	}
 }
 
+# The NAS forwards plain HTTP here too (port 80 stays open for Let's Encrypt): redirect it
+# to HTTPS, told apart by the X-Forwarded-Proto the NAS sets.
+(https_only) {
+	@plain_http header X-Forwarded-Proto http
+	redir @plain_http https://{host}{uri} permanent
+	header Strict-Transport-Security "max-age=31536000"
+}
+
 # -----------------------------------------------------------------------------
 # Public hostnames
 # Flow: Cloudflare DNS → box :443 → NAS reverse proxy (TLS, Let's Encrypt)
@@ -36,6 +44,7 @@
 
 http://keimelion.app {
 	log
+	import https_only
 	import landing_upstream
 }
 
@@ -47,11 +56,13 @@ http://www.keimelion.app {
 
 http://admin.keimelion.app {
 	log
+	import https_only
 	reverse_proxy back:3001
 }
 
 http://api.keimelion.app {
 	log
+	import https_only
 	handle_path /uploads/* {
 		root * /srv/uploads
 		header Cross-Origin-Resource-Policy "cross-origin"
