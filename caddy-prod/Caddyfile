@@ -33,7 +33,9 @@
 (https_only) {
 	@plain_http header X-Forwarded-Proto http
 	redir @plain_http https://{host}{uri} permanent
-	header Strict-Transport-Security "max-age=31536000"
+	# Deferred (>): replaces the HSTS the apps send themselves (Next on admin/app, Helmet on the
+	# API) instead of adding a second, contradictory header. One policy for every hostname.
+	header >Strict-Transport-Security "max-age=31536000"
 }
 
 # Landing only (the Backoffice sets its own in next.config.ts). Every landing script is a
