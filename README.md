@@ -132,7 +132,7 @@ This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:
 | api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
 | back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
-| web       | 127.0.0.1:${WEB_PORT}  | ../Keimelion-Web          |
+| web       | 127.0.0.1:${WEB_PORT}  | ../Keimelion-Web (profile `web`, see `.env.example`) |
 | caddy     | 0.0.0.0:8080           | caddy:2-alpine            |
 
 Caddy routes by hostname and stays in plain HTTP. TLS for `*.keimelion.zalbani.dev`

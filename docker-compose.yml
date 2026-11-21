@@ -89,7 +89,11 @@ services:
     ports:
       - "127.0.0.1:${LANDING_PORT:-3002}:3002"
 
+  # Opt-in per stack (COMPOSE_PROFILES=web in .env) once Keimelion-Web is cloned and built:
+  # without it, `up -d --no-build` (deploy-infra.yml) would fail on a stack with no web image.
+  # Its own deploy targets it by name, which starts it whatever the active profiles.
   web:
+    profiles: [web]
     build:
       context: ../Keimelion-Web
       args:
@@ -113,7 +117,6 @@ services:
       - api
       - back
       - landing
-      - web
     ports:
       - "${CADDY_PORT:-80}:80"
     volumes:
