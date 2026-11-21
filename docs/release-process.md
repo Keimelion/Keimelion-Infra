@@ -239,6 +239,9 @@ In this order (Keimelion-Web is the last one set up this way):
    `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` org secrets if they are restricted to
    selected repos. The rulesets refuse an App that is not installed on the repo.
 3. `scripts/apply-rulesets.sh <repo>`, and add the repo to the default list of the script.
+   Then give the repo access to the runner group of `milky-way` (org *Settings → Actions →
+   Runner groups → Repository access*): otherwise its deploy job stays queued, the runner
+   never sees it.
 4. Tag `v0.0.0` on the initial commit of `main` before the first release PR: without any
    tag, semantic-release starts at `1.0.0`.
 5. Compose service, Caddy routes and the repo → service mapping of `deploy.yml`, then
