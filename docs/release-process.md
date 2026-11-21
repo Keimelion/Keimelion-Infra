@@ -1,6 +1,6 @@
 # CI, release & deploy
 
-One process, identical for the three app repos (API, Back-office, Landing) and the
+One process, identical for the four app repos (API, Back-office, Landing, Web) and the
 npm package repo (Keimelion-SDK, `@keimelion/sdk`).
 The logic lives in the **reusable workflows** of this repo; each app repo holds the
 same thin callers, **byte-for-byte identical** (no inputs). The SDK has no `deploy.yml`
@@ -203,9 +203,9 @@ A tag is cut as soon as a PR is merged here, so test from the PR branch first:
   could otherwise add a job `runs-on: [self-hosted, keimelion]` and run code on
   milky-way. If the plan allows runner groups, restrict the `keimelion` runner to
   the `Keimelion-Infra/.github/workflows/deploy.yml` workflow.
-- **Branches & merge methods** (all three app repos and the SDK): default branch `dev`; allow
+- **Branches & merge methods** (all four app repos and the SDK): default branch `dev`; allow
   *squash* (feature PRs) **and** *merge commits* (release PRs).
-- **Release GitHub App** `keimelion-release` (owned by the org, installed on the three
+- **Release GitHub App** `keimelion-release` (owned by the org, installed on the four
   app repos and the SDK): *Contents*, *Issues*, *Pull requests* read & write. Its credentials are the
   org secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`; without them the release
   falls back to `GITHUB_TOKEN` (which cannot bypass rulesets).
@@ -218,7 +218,7 @@ A tag is cut as soon as a PR is merged here, so test from the PR branch first:
   disallow tokens", delete the `NPM_TOKEN` secret and revoke the token.
 - **Rulesets** are versioned in `github/rulesets/<kind>/` and applied with
   `scripts/apply-rulesets.sh [repo...]` (create or update by name; needs repo admin):
-  - `apps/` (API, Back-office, Landing, SDK) — `main`: PR required, **merge commit only**
+  - `apps/` (API, Back-office, Landing, Web, SDK) — `main`: PR required, **merge commit only**
     (release PRs); `dev`: **squash only** (feature PRs); both require
     the `ci` + `pr-title` checks; the release App is the only bypass actor (release commit
     + tag on `main`, fast-forward of `dev`, or merge of `main` into `dev` if it moved)
@@ -226,3 +226,20 @@ A tag is cut as soon as a PR is merged here, so test from the PR branch first:
     (every tag the app pipelines pin is cut from `main`)
   - `collections/` (Keimelion-API-collections) — `main`: no deletion, no force-push
   - all: no deletion, no force-push
+
+### New app repo
+
+In this order (Keimelion-Web is the last one set up this way):
+
+1. Default branch `dev`, squash and merge commits allowed. `workflow_run` triggers (the
+   `Deploy` workflow) only run from the default branch: with `main` as default, nothing
+   deploys.
+2. Install the `keimelion-release` App on the repo (org *Settings → GitHub Apps →
+   keimelion-release → Configure → Repository access*) and give the repo access to the
+   `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` org secrets if they are restricted to
+   selected repos. The rulesets refuse an App that is not installed on the repo.
+3. `scripts/apply-rulesets.sh <repo>`, and add the repo to the default list of the script.
+4. Tag `v0.0.0` on the initial commit of `main` before the first release PR: without any
+   tag, semantic-release starts at `1.0.0`.
+5. Compose service, Caddy routes and the repo → service mapping of `deploy.yml`, then
+   clone the repo in both stacks (README "Initial setup").
