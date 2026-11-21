@@ -40,10 +40,10 @@ jobs:
           case "$DEPLOY_ENV" in
             preprod)
               BRANCH=dev;  STACK_DIR=/home/zalbani/keimelion-integration; BACKUP_UNIT_PREFIX=keimelion
-              API=https://api.keimelion.zalbani.dev; ADMIN=https://admin.keimelion.zalbani.dev; LANDING=https://keimelion.zalbani.dev ;;
+              API=https://api.keimelion.zalbani.dev; ADMIN=https://admin.keimelion.zalbani.dev; LANDING=https://keimelion.zalbani.dev; WEB=https://app.keimelion.zalbani.dev ;;
             production)
               BRANCH=main; STACK_DIR=/home/zalbani/keimelion-prod; BACKUP_UNIT_PREFIX=keimelion-prod
-              API=https://api.keimelion.app; ADMIN=https://admin.keimelion.app; LANDING=https://keimelion.app ;;
+              API=https://api.keimelion.app; ADMIN=https://admin.keimelion.app; LANDING=https://keimelion.app; WEB=https://app.keimelion.app ;;
             *) echo "::error::Unknown environment $DEPLOY_ENV"; exit 1 ;;
           esac
           # First URL: health endpoint (waited for); the others: smoke tests reading real
@@ -53,6 +53,7 @@ jobs:
             Keimelion-API)        SERVICE=api;     URLS="$API/health $API/v1/categories $API/v1/occasion-types" ;;
             Keimelion-Backoffice) SERVICE=back;    URLS=$ADMIN/ ;;
             Keimelion-Landing)    SERVICE=landing; URLS=$LANDING/ ;;
+            Keimelion-Web)        SERVICE=web;     URLS=$WEB/ ;;
             *) echo "::error::No compose service mapped for $REPO_DIR"; exit 1 ;;
           esac
           {

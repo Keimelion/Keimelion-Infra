@@ -1,7 +1,7 @@
 # Keimelion-Infra
 
 Versioned, reproducible configuration of the Keimelion home server (`milky-way`):
-Postgres + API + Back-office + Landing orchestrated by Docker Compose, restarted
+Postgres + API + Back-office + Landing + Web app orchestrated by Docker Compose, restarted
 automatically on boot.
 
 This repo contains **no application code** and **no secrets**: it references the
@@ -34,7 +34,8 @@ sibling repos cloned next to it and reads its secrets from a local, unversioned 
 │   └── docs/
 ├── Keimelion-API/            ← git@github.com:Keimelion/Keimelion-API.git        (dev)
 ├── Keimelion-Backoffice/     ← git@github.com:Keimelion/Keimelion-Backoffice.git (dev)
-└── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (dev)
+├── Keimelion-Landing/        ← git@github.com:Keimelion/Keimelion-Landing.git    (dev)
+└── Keimelion-Web/            ← git@github.com:Keimelion/Keimelion-Web.git        (dev)
 ```
 
 Build paths in `docker-compose.yml` are relative (`../Keimelion-API`, …):
@@ -48,6 +49,7 @@ git clone git@github.com:Keimelion/Keimelion-Infra.git
 git clone -b dev git@github.com:Keimelion/Keimelion-API.git
 git clone -b dev git@github.com:Keimelion/Keimelion-Backoffice.git
 git clone -b dev git@github.com:Keimelion/Keimelion-Landing.git
+git clone -b dev git@github.com:Keimelion/Keimelion-Web.git
 
 cd Keimelion-Infra
 cp .env.example .env
@@ -99,7 +101,7 @@ Manual fallback (runner down), pulling every repo and rebuilding what changed:
 
 ```bash
 cd ~/keimelion-integration
-for r in Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Infra; do git -C "$r" pull --ff-only; done
+for r in Keimelion-API Keimelion-Backoffice Keimelion-Landing Keimelion-Web Keimelion-Infra; do git -C "$r" pull --ff-only; done
 cd Keimelion-Infra
 docker compose up -d --build
 ```
@@ -110,6 +112,7 @@ The stack is reachable at:
 
 - https://keimelion.zalbani.dev           (landing)
 - https://admin.keimelion.zalbani.dev     (back-office)
+- https://app.keimelion.zalbani.dev       (web app)
 - https://api.keimelion.zalbani.dev       (API + `/uploads/*`)
 
 Flow: Cloudflare DNS (CNAME → `backward.zalbani.dev`) → home router (:443 and
@@ -129,14 +132,15 @@ This is the pre-prod. The production runs on `keimelion.app` through Caddy on `:
 | api       | 127.0.0.1:${API_PORT}  | ../Keimelion-API          |
 | back      | 127.0.0.1:${BACK_PORT} | ../Keimelion-Backoffice   |
 | landing   | 127.0.0.1:${LANDING_PORT}| ../Keimelion-Landing      |
+| web       | 127.0.0.1:${WEB_PORT}  | ../Keimelion-Web (profile `web`, see `.env.example`) |
 | caddy     | 0.0.0.0:8080           | caddy:2-alpine            |
 
 Caddy routes by hostname and stays in plain HTTP. TLS for `*.keimelion.zalbani.dev`
 is terminated upstream by the Synology NAS (reverse proxy + Let's Encrypt), which
 forwards to `http://192.168.1.102:8080` where Caddy dispatches to `landing:3002`,
-`back:3001` or `api:3000` (+ `/uploads/*` served from `data/uploads`). LAN hostnames
+`back:3001`, `web:3002` or `api:3000` (+ `/uploads/*` served from `data/uploads`). LAN hostnames
 `*.keimelion.local` are kept as a plain-HTTP fallback via `/etc/hosts`.
-The debug ports (api/back/landing/postgres) are bound to loopback — see the runbook
+The debug ports (api/back/landing/web/postgres) are bound to loopback — see the runbook
 ("Networking & firewall", "Access from a LAN client").
 
 All services use `restart: unless-stopped` and Docker is enabled at boot

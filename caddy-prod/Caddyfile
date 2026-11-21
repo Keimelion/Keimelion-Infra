@@ -75,6 +75,13 @@ http://admin.keimelion.app {
 	reverse_proxy back:3001
 }
 
+# Web app (owners, editors, guests): security headers set by the app (next.config.ts).
+http://app.keimelion.app {
+	log
+	import https_only
+	reverse_proxy web:3002
+}
+
 http://api.keimelion.app {
 	log
 	import https_only

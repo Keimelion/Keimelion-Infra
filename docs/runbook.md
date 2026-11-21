@@ -45,7 +45,7 @@ Fallback without CI (runner down):
 cd ~/keimelion-integration
 git -C Keimelion-API checkout dev && git -C Keimelion-API pull --ff-only   # every app repo tracks dev on the server
 cd Keimelion-Infra
-docker compose up -d --build api  # or back / landing / caddy
+docker compose up -d --build api  # or back / landing / web / caddy
 ```
 
 Infra changes (compose, Caddyfile) are applied automatically after a merge on `main`
@@ -176,7 +176,7 @@ a ticket, a commit or a log.
 | Checkouts | `/home/zalbani/keimelion-integration` | `/home/zalbani/keimelion-prod` |
 | Compose project | `keimelion` | `keimelion-prod` (`COMPOSE_PROJECT_NAME` in `.env`) |
 | Caddy | `:8080`, `caddy/` | `:80`, `caddy-prod/` |
-| Debug ports (API, back, landing, Postgres) | 3000, 3001, 3002, 5432 | 3100, 3101, 3102, 5433 |
+| Debug ports (API, back, landing, web, Postgres) | 3000, 3001, 3002, 3003, 5432 | 3100, 3101, 3102, 3103, 5433 |
 | Units | `keimelion-*` | `keimelion-prod-*` |
 | Backups | `/var/backups/keimelion`, `restic` on the NAS | `/var/backups/keimelion-prod`, `restic-prod` on the NAS |
 
@@ -192,9 +192,10 @@ the production is skipped while `/home/zalbani/keimelion-prod/Keimelion-Infra/.e
 
 ## NEXT_PUBLIC_API_URL is baked in at build time
 
-`NEXT_PUBLIC_API_URL` (and the landing's `PUBLIC_API_BASE_URL`) is inlined
+`NEXT_PUBLIC_API_URL` (and the landing's `PUBLIC_API_BASE_URL`, the web app's
+`NEXT_PUBLIC_WEB_APP_URL`) is inlined
 into the browser bundle at build time. Changing `PUBLIC_API_URL` in `.env`
-requires `docker compose up -d --build back landing` for the new value to
+requires `docker compose up -d --build back landing web` for the new value to
 reach the browser.
 
 ## Landing language redirect
@@ -204,7 +205,7 @@ The redirect to `/en/` based on the browser language (defined in `vercel.json`) 
 ## Networking & firewall
 
 - Docker publishes ports through its own iptables rules (NAT + `FORWARD` chain, filterable only in `DOCKER-USER`), not through `INPUT`: **UFW rules do not apply to published ports**.
-- Debug ports (api 3000, back 3001, landing 3002, postgres 5432) are deliberately bound to `127.0.0.1`: reach them through an SSH tunnel from a dev workstation.
+- Debug ports (api 3000, back 3001, landing 3002, web 3003, postgres 5432) are deliberately bound to `127.0.0.1`: reach them through an SSH tunnel from a dev workstation.
 - Caddy (pre-prod `:8080`, production `:80`) is bound to `0.0.0.0`. It is the only entry point from the LAN **and** from the NAS reverse proxy, routing by `Host` header (see "Cloudflare / NAS exposure" and "Access from a LAN client"). UFW is currently **inactive**.
 - The home router forwards `:80` and `:443` to the Synology NAS (`192.168.1.100`), which handles TLS for `*.zalbani.dev`. No port is forwarded directly to milky-way (`192.168.1.102`).
 
@@ -229,20 +230,35 @@ The public hostnames follow the same rail as `ha.zalbani.dev` and
 this repo (dashboard, not Git) because the setup predates the project:
 
 1. **Cloudflare DNS** (`zalbani.dev` zone, Cloudflare-managed nameservers):
-   three `DNS only` CNAMEs → `backward.zalbani.dev` (A record pointing to the
+   pre-prod `DNS only` CNAMEs → `backward.zalbani.dev` (A record pointing to the
    home public IP, kept fresh by the Home Assistant Cloudflare DDNS plugin).
    | Record                        | Target                 |
    |-------------------------------|------------------------|
    | keimelion.zalbani.dev         | backward.zalbani.dev   |
    | admin.keimelion.zalbani.dev   | backward.zalbani.dev   |
    | api.keimelion.zalbani.dev     | backward.zalbani.dev   |
+   | app.keimelion.zalbani.dev     | backward.zalbani.dev   |
+
+   The production hostnames (`keimelion.app` zone) point to the same home public IP:
+   `keimelion.app`, `www.keimelion.app`, `admin.keimelion.app`, `api.keimelion.app`,
+   `app.keimelion.app`.
 
 2. **Home router port forwards**: `80/tcp` and `443/tcp` → `192.168.1.100` (NAS).
 
 3. **Synology DSM → Control Panel → Login Portal → Advanced → Reverse Proxy**:
-   three entries, all HTTPS :443 (source) → HTTP `192.168.1.102:8080` (destination,
-   milky-way LAN IP). "Create → WebSocket" preset enabled so `Upgrade` /
-   `Connection` headers pass through. DSM preserves the original `Host`
+   one entry per public hostname, HTTPS :443 (source) → HTTP on milky-way (destination,
+   LAN IP `192.168.1.102`), on the port of the stack's Caddy:
+
+   | Hostnames                       | Destination                | Caddy            |
+   |---------------------------------|----------------------------|------------------|
+   | `*.keimelion.zalbani.dev` (pre-prod) | `192.168.1.102:8080`  | `keimelion-caddy-1`, `caddy/` |
+   | `*keimelion.app` (production)   | `192.168.1.102:80`         | `keimelion-prod-caddy-1`, `caddy-prod/` |
+
+   Every Keimelion service goes through its stack's Caddy, which routes by `Host`: a new
+   service needs no new port, only a reverse-proxy entry on the existing one. The debug
+   ports (3000-3003, 3100-3103) are bound to `127.0.0.1` and never a reverse-proxy target.
+
+   "Create → WebSocket" preset enabled so `Upgrade` / `Connection` headers pass through. DSM preserves the original `Host`
    header (nginx `proxy_set_header Host $host`), which lets Caddy dispatch.
 
 4. **Synology DSM → Control Panel → Security → Certificate**: one Let's
@@ -250,9 +266,9 @@ this repo (dashboard, not Git) because the setup predates the project:
    on :80). Each cert is assigned to its reverse-proxy service in
    `Certificate → Settings`.
 
-Rolling out a new public hostname is three steps outside this repo (CNAME +
-reverse-proxy entry + cert) and one block in `caddy/Caddyfile` + `up -d
-caddy` + `caddy reload`.
+Rolling out a new public hostname is three steps outside this repo (DNS record +
+reverse-proxy entry + cert) and one block in `caddy/Caddyfile` (pre-prod) or
+`caddy-prod/Caddyfile` (production), applied by `deploy-infra.yml` on merge.
 
 ## Access from a LAN client
 
@@ -264,10 +280,10 @@ The stack is reachable in two ways from the LAN:
 - Plain-HTTP LAN fallback (useful for low-level debug, or when the NAS
   reverse proxy is down). Add this line to `/etc/hosts` on each client:
   ```
-  192.168.1.102   keimelion.local admin.keimelion.local api.keimelion.local
+  192.168.1.102   keimelion.local admin.keimelion.local api.keimelion.local app.keimelion.local
   ```
   Then: http://keimelion.local:8080, http://admin.keimelion.local:8080,
-  http://api.keimelion.local:8080. http://192.168.1.102:8080 redirects to the landing.
+  http://api.keimelion.local:8080, http://app.keimelion.local:8080. http://192.168.1.102:8080 redirects to the landing.
   Caveat: the front-end bundles call `https://api.keimelion.zalbani.dev`
   (baked at build time), and the API's CORS allow-list does not include the
   `.local` origins, so opening a front via `.local` from a browser gives a

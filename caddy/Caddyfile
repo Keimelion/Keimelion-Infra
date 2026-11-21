@@ -67,6 +67,13 @@ http://admin.keimelion.zalbani.dev {
 	reverse_proxy back:3001
 }
 
+# Web app (owners, editors, guests): security headers set by the app (next.config.ts).
+http://app.keimelion.zalbani.dev {
+	log
+	import noindex
+	reverse_proxy web:3002
+}
+
 http://api.keimelion.zalbani.dev {
 	log
 	import noindex
@@ -90,6 +97,10 @@ http://keimelion.local {
 
 http://admin.keimelion.local {
 	reverse_proxy back:3001
+}
+
+http://app.keimelion.local {
+	reverse_proxy web:3002
 }
 
 http://api.keimelion.local {

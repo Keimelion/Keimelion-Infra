@@ -89,6 +89,26 @@ services:
     ports:
       - "127.0.0.1:${LANDING_PORT:-3002}:3002"
 
+  # Opt-in per stack (COMPOSE_PROFILES=web in .env) once Keimelion-Web is cloned and built:
+  # without it, `up -d --no-build` (deploy-infra.yml) would fail on a stack with no web image.
+  # Its own deploy targets it by name, which starts it whatever the active profiles.
+  web:
+    profiles: [web]
+    build:
+      context: ../Keimelion-Web
+      args:
+        # Inlined into the browser bundle at build time: must be reachable from the browser
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+        NEXT_PUBLIC_WEB_APP_URL: ${WEB_APP_URL}
+        GIT_SHA: ${GIT_SHA:-}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - api
+    ports:
+      # The app listens on 3002 inside its container, like the landing in its own
+      - "127.0.0.1:${WEB_PORT:-3003}:3002"
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
