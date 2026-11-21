@@ -246,3 +246,7 @@ In this order (Keimelion-Web is the last one set up this way):
    tag, semantic-release starts at `1.0.0`.
 5. Compose service, Caddy routes and the repo → service mapping of `deploy.yml`, then
    clone the repo in both stacks (README "Initial setup").
+6. Let the runner use both clones: it runs as `github-runner` and git refuses a repo owned
+   by `zalbani` ("detected dubious ownership"):
+   `sudo -u github-runner git config --global --add safe.directory <stack>/<repo>`, for
+   `/home/zalbani/keimelion-integration` and `/home/zalbani/keimelion-prod`.
